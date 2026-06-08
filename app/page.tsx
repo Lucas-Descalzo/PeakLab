@@ -1,7 +1,7 @@
 import { getTodayWorkout, getCurrentWeek, buildPlan } from "@/lib/training-plan";
-import WorkoutCard from "@/components/WorkoutCard";
-import ReadinessCard from "@/components/ReadinessCard";
 import WeekSummary from "@/components/WeekSummary";
+import ReadinessCardCompact from "@/components/ReadinessCardCompact";
+import Link from "next/link";
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -15,49 +15,59 @@ export default function Dashboard() {
   const currentWeek = getCurrentWeek();
   const weekWorkouts = buildPlan().filter((w) => w.week === currentWeek);
 
-  const todayDate = new Date().toLocaleDateString("es-AR", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
-
   const greeting = getGreeting();
 
   return (
     <div className="space-y-5">
-      {/* Greeting + date */}
+      {/* Header */}
       <div className="pt-1">
-        <p className="text-blue-400 text-xs font-semibold uppercase tracking-widest mb-1 capitalize">
-          {todayDate}
-        </p>
-        <h1 className="text-2xl font-black text-zinc-50 leading-tight">
-          {greeting}, Lucas
+        <h1 className="text-2xl font-black text-slate-100 leading-tight">
+          {greeting}, Lucas 👋
         </h1>
-        <p className="text-zinc-500 text-sm mt-0.5">
-          Semana {currentWeek} de 15
+        <p className="text-slate-500 text-sm mt-1">
+          Listo para tu mejor versión hoy.
         </p>
       </div>
 
-      {/* Training Readiness */}
-      <ReadinessCard />
+      {/* Card: Entrenamiento de hoy */}
+      <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-5">
+        <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-3">
+          Tu entrenamiento de hoy
+        </p>
+        {today ? (
+          <div>
+            <h2 className="text-slate-100 font-bold text-lg leading-tight">{today.title}</h2>
+            {today.description && (
+              <p className="text-slate-500 text-sm mt-1 leading-snug">{today.description}</p>
+            )}
+            <div className="flex items-center justify-between mt-4">
+              <div className="flex items-center gap-1.5">
+                <span className="text-lime-400 font-extrabold text-xl leading-none">{today.distanceKm}</span>
+                <span className="text-slate-500 text-sm">km</span>
+              </div>
+              <Link
+                href="/plan"
+                className="bg-lime-400 text-[#080c10] font-semibold rounded-xl px-4 py-2 text-sm"
+              >
+                Ver rutina →
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-2">
+            <p className="text-slate-100 font-bold text-base">Día de descanso</p>
+            <p className="text-slate-500 text-sm mt-1">El descanso es parte del plan.</p>
+          </div>
+        )}
+      </div>
 
-      {/* Today's session — prominent */}
-      {today ? (
-        <section>
-          <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-3">
-            Sesión de hoy
-          </h2>
-          <WorkoutCard workout={today} expanded />
-        </section>
-      ) : (
-        <div className="bg-zinc-900/80 border border-zinc-800/60 rounded-2xl p-6 text-center">
-          <p className="text-4xl mb-3">😴</p>
-          <p className="text-zinc-200 font-bold text-lg">Día de descanso</p>
-          <p className="text-zinc-500 text-sm mt-1">
-            El descanso es parte del entrenamiento.
-          </p>
-        </div>
-      )}
+      {/* Card: Readiness */}
+      <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-5">
+        <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-3">
+          Tu readiness
+        </p>
+        <ReadinessCardCompact />
+      </div>
 
       {/* Week summary */}
       <WeekSummary workouts={weekWorkouts} currentWeek={currentWeek} />
@@ -103,24 +113,24 @@ function StatCard({
 }) {
   return (
     <div
-      className={`stat-card rounded-xl p-3 border ${
+      className={`rounded-xl p-3 border ${
         highlight
-          ? "bg-blue-500/10 border-blue-500/30"
-          : "bg-zinc-900/80 border-zinc-800/60"
+          ? "bg-lime-400/10 border-lime-400/30"
+          : "bg-[#0f1419] border-[#1e2a35]"
       }`}
     >
       <div className="flex items-center gap-1 mb-1.5">
         <span className="text-base leading-none">{icon}</span>
-        <p className="text-zinc-400 text-xs">{label}</p>
+        <p className="text-slate-500 text-xs">{label}</p>
       </div>
       <p
         className={`font-extrabold text-base leading-none ${
-          highlight ? "text-blue-400" : "text-zinc-100"
+          highlight ? "text-lime-400" : "text-slate-100"
         }`}
       >
         {value}
       </p>
-      <p className="text-zinc-500 text-xs mt-1 leading-snug">{sub}</p>
+      <p className="text-slate-500 text-xs mt-1 leading-snug">{sub}</p>
     </div>
   );
 }

@@ -2,7 +2,6 @@
 import { useState } from "react";
 import { PlannedWorkout, WorkoutType } from "@/lib/training-plan";
 
-// Ordered Mon-Sun but displayed Dom-Sáb (Sun=0 ... Sat=6)
 const DAY_LABELS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
 const TYPE_COLOR: Record<WorkoutType, string> = {
@@ -41,10 +40,15 @@ export default function WeekSummary({
     byDay[d] = w;
   }
 
-  // Today's day of week
   const todayDow = new Date().getDay();
-
   const selectedWorkout = workouts.find((w) => w.date === selectedDate) ?? null;
+
+  // Completion stats
+  const totalWorkouts = workouts.filter((w) => w.type !== "rest").length;
+  const completedWorkouts = workouts.filter(
+    (w) => w.type !== "rest" && w.date < today
+  ).length;
+  const progressPct = totalWorkouts > 0 ? (completedWorkouts / totalWorkouts) * 100 : 0;
 
   function handleDayClick(dow: number) {
     const w = byDay[dow];
@@ -53,13 +57,21 @@ export default function WeekSummary({
   }
 
   return (
-    <div className="bg-zinc-900/80 border border-zinc-800/60 rounded-2xl p-4">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">
+    <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
+      {/* Header with progress */}
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
           Semana {currentWeek}
         </h2>
-        <span className="text-zinc-300 font-semibold text-sm">{totalKm}km</span>
+        <span className="text-slate-400 font-semibold text-sm">{completedWorkouts}/{totalWorkouts} completados</span>
+      </div>
+
+      {/* Progress bar */}
+      <div className="w-full h-1.5 bg-[#1e2a35] rounded-full mb-4 overflow-hidden">
+        <div
+          className="h-full bg-lime-400 rounded-full transition-all duration-500"
+          style={{ width: `${progressPct}%` }}
+        />
       </div>
 
       {/* 7-day circles */}
@@ -74,15 +86,15 @@ export default function WeekSummary({
           return (
             <div
               key={dow}
-              className="flex flex-col items-center gap-1.5 day-circle"
+              className="flex flex-col items-center gap-1.5 cursor-pointer"
+              style={{ WebkitTapHighlightColor: "transparent" }}
               onClick={() => handleDayClick(dow)}
             >
-              {/* Circle */}
               <div
                 className={[
                   "w-8 h-8 rounded-full flex items-center justify-center",
-                  hasTraining ? `${TYPE_COLOR[workout.type]} ${isSelected ? `ring-2 ${TYPE_RING[workout.type]}` : ""}` : "bg-zinc-800/50",
-                  isToday ? "ring-2 ring-white/70 ring-offset-1 ring-offset-zinc-900" : "",
+                  hasTraining ? `${TYPE_COLOR[workout.type]} ${isSelected ? `ring-2 ${TYPE_RING[workout.type]}` : ""}` : "bg-[#1e2a35]",
+                  isToday ? "ring-2 ring-white/70 ring-offset-1 ring-offset-[#0f1419]" : "",
                   isPast && !isToday ? "opacity-35" : "",
                 ].filter(Boolean).join(" ")}
               >
@@ -92,9 +104,7 @@ export default function WeekSummary({
                   </span>
                 )}
               </div>
-
-              {/* Day label */}
-              <span className={`text-xs ${isToday ? "text-zinc-200 font-semibold" : "text-zinc-600"}`}>
+              <span className={`text-xs ${isToday ? "text-slate-200 font-semibold" : "text-slate-600"}`}>
                 {label}
               </span>
             </div>
@@ -102,15 +112,21 @@ export default function WeekSummary({
         })}
       </div>
 
+      {/* Volume */}
+      <div className="mt-3 flex items-center justify-between">
+        <span className="text-slate-500 text-xs">Volumen</span>
+        <span className="text-slate-300 font-semibold text-sm">{totalKm}km</span>
+      </div>
+
       {/* Selected day detail */}
       {selectedWorkout && (
-        <div className="mt-4 pt-3 border-t border-zinc-800/60">
+        <div className="mt-4 pt-3 border-t border-[#1e2a35]">
           <div className="flex items-center justify-between">
-            <p className="text-zinc-200 text-sm font-semibold">{selectedWorkout.title}</p>
-            <span className="text-zinc-500 text-xs">{selectedWorkout.distanceKm}km</span>
+            <p className="text-slate-200 text-sm font-semibold">{selectedWorkout.title}</p>
+            <span className="text-slate-500 text-xs">{selectedWorkout.distanceKm}km</span>
           </div>
           {selectedWorkout.description && (
-            <p className="text-zinc-500 text-xs mt-0.5 leading-snug">{selectedWorkout.description}</p>
+            <p className="text-slate-500 text-xs mt-0.5 leading-snug">{selectedWorkout.description}</p>
           )}
         </div>
       )}

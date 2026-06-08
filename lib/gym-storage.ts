@@ -1,5 +1,5 @@
 // Gym session storage with Supabase + localStorage fallback
-export interface GymSet { kg: number; reps: number }
+export interface GymSet { kg: number; reps: number; rir?: number; completed?: boolean }
 export interface GymExercise { name: string; sets: GymSet[] }
 export interface GymSession {
   id: string;

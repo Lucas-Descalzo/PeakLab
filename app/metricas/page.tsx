@@ -1,4 +1,5 @@
 import { getRecentActivities, getLatestWellness } from "@/lib/db";
+import { calcTrainingLoad } from "@/lib/training-readiness";
 
 const STATIC_ACTIVITIES = [
   { date: "2026-06-02", name: "VO2 máximo", distance_m: 5554, duration_s: 1812, avg_hr: 163, training_effect: 3.5 },
@@ -9,9 +10,15 @@ const STATIC_ACTIVITIES = [
   { date: "2026-05-10", name: "Media Maratón Ciudad", distance_m: 21357, duration_s: 6936, avg_hr: 174, training_effect: 5.0 },
 ];
 
-// Weekly volume data (km) for the sparkbar chart
 const WEEKLY_KM = [42, 48, 55, 51, 38, 62, 58];
 const WEEK_LABELS = ["S1", "S2", "S3", "S4", "S5", "S6", "S7"];
+
+const PERSONAL_RECORDS = [
+  { icon: "🏃", dist: "Mejor 1km",      time: "4:09",    date: "may 2026" },
+  { icon: "⚡", dist: "Mejor 5K",       time: "24:17",   date: "nov 2025" },
+  { icon: "🔟", dist: "Mejor 10K",      time: "49:41",   date: "nov 2025" },
+  { icon: "🏅", dist: "Media maratón",  time: "1:51:42", date: "ago 2025" },
+];
 
 export default async function MetricasPage() {
   const [liveActivities, wellness] = await Promise.all([
@@ -32,11 +39,33 @@ export default async function MetricasPage() {
 
   const maxKm = Math.max(...WEEKLY_KM);
 
+  // Training load calculation
+  const load = calcTrainingLoad(STATIC_ACTIVITIES);
+  const atlRounded = Math.round(load.atl);
+  const ctlRounded = Math.round(load.ctl);
+  const tsbRounded = Math.round(load.tsb);
+
+  let loadStatus: string;
+  let loadStatusColor: string;
+  if (tsbRounded > 10) {
+    loadStatus = "Fresco";
+    loadStatusColor = "text-lime-400";
+  } else if (tsbRounded >= -5) {
+    loadStatus = "En forma";
+    loadStatusColor = "text-lime-400";
+  } else if (tsbRounded >= -20) {
+    loadStatus = "Fatigado";
+    loadStatusColor = "text-yellow-400";
+  } else {
+    loadStatus = "Muy fatigado";
+    loadStatusColor = "text-red-400";
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-black text-zinc-50">Métricas</h1>
+        <h1 className="text-2xl font-black text-slate-100">Métricas</h1>
         {!hasLiveData && (
           <span className="text-xs text-yellow-500 bg-yellow-500/10 border border-yellow-500/20 px-2 py-1 rounded-full">
             Garmin export
@@ -52,7 +81,7 @@ export default async function MetricasPage() {
           value="45"
           unit="bpm"
           sub="nivel atlético"
-          color="text-blue-400"
+          color="text-lime-400"
         />
         <StatBox
           icon="📈"
@@ -68,7 +97,7 @@ export default async function MetricasPage() {
           value="1:51:42"
           unit=""
           sub="24 ago 2025"
-          color="text-blue-400"
+          color="text-lime-400"
         />
         <StatBox
           icon="🧠"
@@ -81,8 +110,8 @@ export default async function MetricasPage() {
       </div>
 
       {/* Volume chart */}
-      <div className="bg-zinc-900/80 border border-zinc-800/60 rounded-2xl p-4">
-        <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-4">
+      <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
+        <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">
           Volumen semanal (km)
         </h2>
         <div className="flex items-end gap-2 h-28">
@@ -90,12 +119,12 @@ export default async function MetricasPage() {
             const heightPct = (km / maxKm) * 100;
             return (
               <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
-                <span className="text-zinc-500 text-xs">{km}</span>
+                <span className="text-slate-500 text-xs">{km}</span>
                 <div
-                  className="w-full rounded-t-md bar-gradient"
-                  style={{ height: `${heightPct}%` }}
+                  className="w-full rounded-t-md"
+                  style={{ height: `${heightPct}%`, background: "linear-gradient(to bottom, #4ADE80, #16a34a)" }}
                 />
-                <span className="text-zinc-600 text-xs">{WEEK_LABELS[i]}</span>
+                <span className="text-slate-600 text-xs">{WEEK_LABELS[i]}</span>
               </div>
             );
           })}
@@ -103,8 +132,8 @@ export default async function MetricasPage() {
       </div>
 
       {/* Race predictions */}
-      <div className="bg-zinc-900/80 border border-zinc-800/60 rounded-2xl p-4">
-        <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-3">
+      <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
+        <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">
           Predicciones Garmin (jun 2026)
         </h2>
         <div className="space-y-2">
@@ -118,30 +147,30 @@ export default async function MetricasPage() {
               key={r.dist}
               className={`flex items-center justify-between p-3 rounded-xl ${
                 r.target
-                  ? "bg-blue-500/10 border border-blue-500/20"
-                  : "bg-zinc-800/60"
+                  ? "bg-lime-400/10 border border-lime-400/20"
+                  : "bg-[#080c10]"
               }`}
             >
-              <span className={`font-semibold text-sm ${r.target ? "text-blue-300" : "text-zinc-300"}`}>
+              <span className={`font-semibold text-sm ${r.target ? "text-lime-300" : "text-slate-300"}`}>
                 {r.dist}
               </span>
               <div className="text-right">
-                <span className={`font-extrabold text-base ${r.target ? "text-blue-400" : "text-zinc-200"}`}>
+                <span className={`font-extrabold text-base ${r.target ? "text-lime-400" : "text-slate-200"}`}>
                   {r.time}
                 </span>
-                <span className="text-zinc-500 text-xs ml-2">{r.pace}</span>
+                <span className="text-slate-500 text-xs ml-2">{r.pace}</span>
               </div>
             </div>
           ))}
         </div>
-        <p className="text-zinc-600 text-xs mt-3 leading-snug">
+        <p className="text-slate-600 text-xs mt-3 leading-snug">
           Tus tiempos reales son más conservadores — las predicciones asumen condiciones óptimas.
         </p>
       </div>
 
       {/* Activity log */}
       <div>
-        <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-3">
+        <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">
           Últimas corridas{" "}
           {hasLiveData && (
             <span className="text-green-400 normal-case font-normal">● live</span>
@@ -158,20 +187,20 @@ export default async function MetricasPage() {
             return (
               <div
                 key={i}
-                className="bg-zinc-900/80 border border-zinc-800/60 rounded-xl p-3 flex items-center justify-between"
+                className="bg-[#0f1419] border border-[#1e2a35] rounded-xl p-3 flex items-center justify-between"
               >
                 <div>
-                  <p className="text-zinc-200 text-sm font-semibold">{a.name}</p>
-                  <p className="text-zinc-500 text-xs">{a.date}</p>
+                  <p className="text-slate-200 text-sm font-semibold">{a.name}</p>
+                  <p className="text-slate-500 text-xs">{a.date}</p>
                 </div>
                 <div className="flex gap-5 text-right">
                   <div>
-                    <p className="text-zinc-200 text-sm font-bold">{km}km</p>
-                    <p className="text-zinc-500 text-xs">{pace}/km</p>
+                    <p className="text-slate-200 text-sm font-bold">{km}km</p>
+                    <p className="text-slate-500 text-xs">{pace}/km</p>
                   </div>
                   <div>
-                    <p className="text-zinc-200 text-sm font-bold">{a.avg_hr} bpm</p>
-                    {te !== null && <p className="text-zinc-500 text-xs">TE {te}</p>}
+                    <p className="text-slate-200 text-sm font-bold">{a.avg_hr} bpm</p>
+                    {te !== null && <p className="text-slate-500 text-xs">TE {te}</p>}
                   </div>
                 </div>
               </div>
@@ -179,6 +208,64 @@ export default async function MetricasPage() {
           })}
         </div>
       </div>
+
+      {/* Training Load section */}
+      <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
+        <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">
+          Carga de entrenamiento
+        </h2>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between py-1.5 border-b border-[#1e2a35]">
+            <span className="text-slate-400 text-sm">ATL <span className="text-slate-600 text-xs">(Carga aguda 7d)</span></span>
+            <span className="text-slate-200 font-bold text-sm font-mono">{atlRounded}</span>
+          </div>
+          <div className="flex items-center justify-between py-1.5 border-b border-[#1e2a35]">
+            <span className="text-slate-400 text-sm">CTL <span className="text-slate-600 text-xs">(Carga crónica 42d)</span></span>
+            <span className="text-slate-200 font-bold text-sm font-mono">{ctlRounded}</span>
+          </div>
+          <div className="flex items-center justify-between py-1.5 border-b border-[#1e2a35]">
+            <span className="text-slate-400 text-sm">TSB <span className="text-slate-600 text-xs">(Balance)</span></span>
+            <span className={`font-bold text-sm font-mono ${tsbRounded >= 0 ? "text-lime-400" : "text-orange-400"}`}>
+              {tsbRounded > 0 ? "+" : ""}{tsbRounded}
+            </span>
+          </div>
+          <div className="flex items-center justify-between py-1.5">
+            <span className="text-slate-400 text-sm">Estado</span>
+            <span className={`font-bold text-sm ${loadStatusColor}`}>{loadStatus}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Personal Records */}
+      <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
+        <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">
+          Récords personales
+        </h2>
+        <div className="space-y-2">
+          {PERSONAL_RECORDS.map((pr) => (
+            <div key={pr.dist} className="flex items-center justify-between py-1.5 border-b border-[#1e2a35] last:border-0">
+              <div className="flex items-center gap-2">
+                <span className="text-base leading-none">{pr.icon}</span>
+                <span className="text-slate-300 text-sm">{pr.dist}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-lime-400 font-bold text-sm font-mono">{pr.time}</span>
+                <span className="text-slate-600 text-xs ml-2">{pr.date}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Sync banner */}
+      {!hasLiveData && (
+        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3">
+          <p className="text-yellow-400 text-xs font-semibold mb-0.5">Sync pendiente</p>
+          <p className="text-yellow-500/70 text-xs">
+            Datos estáticos. Conectá Garmin para ver métricas en tiempo real.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -199,16 +286,16 @@ function StatBox({
   color: string;
 }) {
   return (
-    <div className="bg-zinc-900/80 border border-zinc-800/60 rounded-xl p-3">
+    <div className="bg-[#0f1419] border border-[#1e2a35] rounded-xl p-3">
       <div className="flex items-center gap-1.5 mb-1.5">
         <span className="text-base leading-none">{icon}</span>
-        <p className="text-zinc-400 text-xs">{label}</p>
+        <p className="text-slate-500 text-xs">{label}</p>
       </div>
       <p className={`text-2xl font-extrabold leading-none ${color}`}>
         {value}
-        {unit && <span className="text-sm font-normal ml-1 text-zinc-400">{unit}</span>}
+        {unit && <span className="text-sm font-normal ml-1 text-slate-500">{unit}</span>}
       </p>
-      <p className="text-zinc-500 text-xs mt-1">{sub}</p>
+      <p className="text-slate-500 text-xs mt-1">{sub}</p>
     </div>
   );
 }

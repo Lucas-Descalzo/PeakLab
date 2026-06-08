@@ -46,25 +46,45 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-140px)]">
-      <h1 className="text-2xl font-black text-zinc-50 mb-4 flex-shrink-0">Coach IA</h1>
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-4 flex-shrink-0">
+        <div className="w-10 h-10 rounded-full bg-lime-400/20 border border-lime-400/30 flex items-center justify-center text-lg">
+          🤖
+        </div>
+        <div>
+          <p className="text-slate-100 font-bold text-base leading-tight">Coach IA</p>
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-lime-400 inline-block" />
+            <span className="text-lime-400 text-xs">En línea</span>
+          </div>
+        </div>
+      </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto space-y-3 mb-4">
         {messages.length === 0 && (
           <div className="space-y-3">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-              <p className="text-zinc-300 text-sm">
-                Hola. Soy tu coach de entrenamiento. Tengo acceso a tu plan, tus datos de Garmin y tu historial de gym. ¿En qué te puedo ayudar?
-              </p>
+            {/* Welcome bubble */}
+            <div className="flex items-start gap-2">
+              <div className="w-7 h-7 rounded-full bg-lime-400/20 border border-lime-400/30 flex items-center justify-center text-sm flex-shrink-0 mt-0.5">
+                🤖
+              </div>
+              <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%]">
+                <p className="text-slate-300 text-sm leading-relaxed">
+                  Hola. Soy tu coach de entrenamiento. Tengo acceso a tu plan, tus datos de Garmin y tu historial de gym. ¿En qué te puedo ayudar?
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-zinc-500 text-xs mb-2">Preguntas frecuentes</p>
+
+            {/* Suggestions */}
+            <div className="pl-9">
+              <p className="text-slate-500 text-xs mb-2">Preguntas frecuentes</p>
               <div className="grid grid-cols-1 gap-2">
                 {SUGGESTIONS.map((s) => (
                   <button
                     key={s}
                     onClick={() => send(s)}
-                    className="text-left bg-zinc-900 border border-zinc-800 hover:border-zinc-600 rounded-xl p-3 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+                    className="text-left border border-lime-400/25 hover:border-lime-400/50 rounded-xl p-3 text-sm text-lime-400 hover:text-lime-300 transition-colors bg-lime-400/5"
                   >
                     {s}
                   </button>
@@ -75,12 +95,17 @@ export default function ChatPage() {
         )}
 
         {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+          <div key={i} className={`flex items-end gap-2 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+            {m.role === "assistant" && (
+              <div className="w-7 h-7 rounded-full bg-lime-400/20 border border-lime-400/30 flex items-center justify-center text-sm flex-shrink-0 mb-0.5">
+                🤖
+              </div>
+            )}
             <div
               className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
                 m.role === "user"
-                  ? "bg-blue-500 text-white"
-                  : "bg-zinc-900 border border-zinc-800 text-zinc-200"
+                  ? "bg-lime-400 text-[#080c10] font-medium rounded-br-sm"
+                  : "bg-[#0f1419] border border-[#1e2a35] text-slate-200 rounded-bl-sm"
               }`}
             >
               {m.content}
@@ -89,10 +114,13 @@ export default function ChatPage() {
         ))}
 
         {loading && (
-          <div className="flex justify-start">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-2.5">
-              <span className="text-zinc-400 text-sm">Pensando</span>
-              <span className="animate-pulse text-zinc-400">...</span>
+          <div className="flex items-end gap-2 justify-start">
+            <div className="w-7 h-7 rounded-full bg-lime-400/20 border border-lime-400/30 flex items-center justify-center text-sm flex-shrink-0 mb-0.5">
+              🤖
+            </div>
+            <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl rounded-bl-sm px-4 py-2.5">
+              <span className="text-slate-400 text-sm">Pensando</span>
+              <span className="animate-pulse text-slate-400">...</span>
             </div>
           </div>
         )}
@@ -107,12 +135,12 @@ export default function ChatPage() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
           placeholder="Preguntá algo..."
-          className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-blue-500/50"
+          className="flex-1 bg-[#0f1419] border border-[#1e2a35] rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-lime-400/40"
         />
         <button
           onClick={() => send()}
           disabled={loading || !input.trim()}
-          className="px-4 py-3 bg-blue-500 hover:bg-blue-400 disabled:opacity-40 text-white rounded-xl font-bold text-sm transition-colors"
+          className="px-4 py-3 bg-lime-400 hover:bg-lime-300 disabled:opacity-40 text-[#080c10] rounded-xl font-bold text-sm transition-colors"
         >
           Enviar
         </button>

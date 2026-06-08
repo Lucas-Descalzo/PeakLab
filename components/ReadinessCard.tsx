@@ -12,69 +12,38 @@ interface Readiness {
   hrv?: number;
 }
 
-// Gauge arc color by readiness color key
 const GAUGE_COLOR: Record<string, string> = {
-  green:  "#22c55e",
-  lime:   "#84cc16",
+  green:  "#4ADE80",
+  lime:   "#4ADE80",
   yellow: "#eab308",
   orange: "#f97316",
   red:    "#ef4444",
 };
 
 const TEXT_COLOR: Record<string, string> = {
-  green:  "text-green-400",
+  green:  "text-lime-400",
   lime:   "text-lime-400",
   yellow: "text-yellow-400",
   orange: "text-orange-400",
   red:    "text-red-400",
 };
 
-
-function subScoreColor(value: number): string {
-  if (value >= 70) return "text-green-400";
-  if (value >= 50) return "text-yellow-400";
-  return "text-red-400";
-}
-
-function subScoreChipBg(value: number): string {
-  if (value >= 70) return "bg-green-500/10 border-green-500/20 text-green-300";
-  if (value >= 50) return "bg-yellow-500/10 border-yellow-500/20 text-yellow-300";
-  return "bg-red-500/10 border-red-500/20 text-red-300";
-}
-
-/** SVG semicircular gauge.
- *  The arc runs from 9 o'clock (180°) to 0° (east), i.e. left→right across the top.
- *  cx=90, cy=90, r=68, strokeWidth=10
- *  Full arc length = π * r ≈ 213.6
- */
 function GaugeSVG({ score, color }: { score: number; color: string }) {
   const cx = 90, cy = 90, r = 68, sw = 10;
-  // Full semicircle arc length
-  const fullArc = Math.PI * r; // ≈ 213.6
+  const fullArc = Math.PI * r;
   const filled = (score / 100) * fullArc;
   const empty = fullArc - filled;
-
-  // Arc starts at 180° (left) and goes clockwise to 0° (right)
-  // In SVG: M (cx - r, cy) arc to (cx + r, cy)
-  const arcColor = GAUGE_COLOR[color] || "#3B82F6";
+  const arcColor = GAUGE_COLOR[color] || "#4ADE80";
 
   return (
-    <svg
-      viewBox="0 0 180 100"
-      width="180"
-      height="100"
-      className="overflow-visible"
-      aria-hidden="true"
-    >
-      {/* Background arc (track) */}
+    <svg viewBox="0 0 180 100" width="180" height="100" className="overflow-visible" aria-hidden="true">
       <path
         d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
         fill="none"
-        stroke="#27272a"
+        stroke="#1e2a35"
         strokeWidth={sw}
         strokeLinecap="round"
       />
-      {/* Filled arc */}
       {score > 0 && (
         <path
           d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
@@ -83,13 +52,22 @@ function GaugeSVG({ score, color }: { score: number; color: string }) {
           strokeWidth={sw}
           strokeLinecap="round"
           strokeDasharray={`${filled} ${empty}`}
-          style={{
-            filter: `drop-shadow(0 0 6px ${arcColor}80)`,
-          }}
+          style={{ filter: `drop-shadow(0 0 6px ${arcColor}80)` }}
         />
       )}
     </svg>
   );
+}
+
+function factorStatus(score: number, type: "hrv" | "sleep" | "load"): { label: string; color: string; dotColor: string } {
+  if (type === "load") {
+    if (score >= 70) return { label: "Bueno", color: "text-lime-400", dotColor: "bg-lime-400" };
+    if (score >= 40) return { label: "Alto", color: "text-yellow-400", dotColor: "bg-yellow-400" };
+    return { label: "Muy alto", color: "text-red-400", dotColor: "bg-red-400" };
+  }
+  if (score >= 70) return { label: "Óptimo", color: "text-lime-400", dotColor: "bg-lime-400" };
+  if (score >= 50) return { label: "Bueno", color: "text-yellow-400", dotColor: "bg-yellow-400" };
+  return { label: "Bajo", color: "text-red-400", dotColor: "bg-red-400" };
 }
 
 export default function ReadinessCard() {
@@ -105,15 +83,15 @@ export default function ReadinessCard() {
 
   if (loading) {
     return (
-      <div className="bg-zinc-900/80 border border-zinc-800/60 rounded-2xl p-5 animate-pulse">
-        <div className="h-3 bg-zinc-800 rounded w-1/3 mb-4" />
+      <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-5 animate-pulse">
+        <div className="h-3 bg-[#1e2a35] rounded w-1/3 mb-4" />
         <div className="flex justify-center">
-          <div className="w-44 h-24 bg-zinc-800 rounded-full" />
+          <div className="w-44 h-24 bg-[#1e2a35] rounded-full" />
         </div>
         <div className="flex gap-2 mt-4">
-          <div className="flex-1 h-12 bg-zinc-800 rounded-xl" />
-          <div className="flex-1 h-12 bg-zinc-800 rounded-xl" />
-          <div className="flex-1 h-12 bg-zinc-800 rounded-xl" />
+          <div className="flex-1 h-12 bg-[#1e2a35] rounded-xl" />
+          <div className="flex-1 h-12 bg-[#1e2a35] rounded-xl" />
+          <div className="flex-1 h-12 bg-[#1e2a35] rounded-xl" />
         </div>
       </div>
     );
@@ -121,17 +99,23 @@ export default function ReadinessCard() {
 
   if (!data) return null;
 
-  const textColor = TEXT_COLOR[data.color] || "text-zinc-300";
+  const textColor = TEXT_COLOR[data.color] || "text-lime-400";
+
+  const factors = [
+    { icon: "💓", name: "HRV", value: data.hrv_score, type: "hrv" as const },
+    { icon: "😴", name: "Sueño", value: data.sleep_score, type: "sleep" as const },
+    { icon: "⚡", name: "Carga", value: data.load_score, type: "load" as const },
+  ];
 
   return (
-    <div className="bg-zinc-900/80 border border-zinc-800/60 rounded-2xl p-5">
+    <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-5">
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
-        <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">
+        <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest">
           Training Readiness
         </p>
         {data.hrv && (
-          <span className="text-zinc-500 text-xs font-mono bg-zinc-800 px-2 py-0.5 rounded-full">
+          <span className="text-slate-500 text-xs font-mono bg-[#1e2a35] px-2 py-0.5 rounded-full">
             HRV {data.hrv}ms
           </span>
         )}
@@ -141,7 +125,6 @@ export default function ReadinessCard() {
       <div className="flex flex-col items-center -mb-2">
         <div className="relative">
           <GaugeSVG score={data.score} color={data.color} />
-          {/* Centered score text inside the arc */}
           <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center pb-1">
             <span className={`text-4xl font-black leading-none tracking-tight ${textColor}`}>
               {data.score}
@@ -153,28 +136,33 @@ export default function ReadinessCard() {
         </div>
       </div>
 
-      {/* Recommendation */}
-      <p className="text-zinc-400 text-sm text-center mb-4 px-2 leading-snug">
-        {data.recommendation}
-      </p>
+      {/* Factors */}
+      <div className="mt-4 mb-3">
+        <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-2">Factores</p>
+        <div className="space-y-2">
+          {factors.map((f) => {
+            const status = factorStatus(f.value, f.type);
+            return (
+              <div key={f.name} className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-base leading-none">{f.icon}</span>
+                  <span className="text-slate-400 text-sm">{f.name}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-100 text-sm font-semibold font-mono">{f.value}</span>
+                  <span className={`w-2 h-2 rounded-full ${status.dotColor}`} />
+                  <span className={`text-xs font-medium ${status.color}`}>{status.label}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
-      {/* Sub-score chips */}
-      <div className="flex gap-2">
-        {[
-          { label: "HRV", value: data.hrv_score },
-          { label: "Sueño", value: data.sleep_score },
-          { label: "Carga", value: data.load_score },
-        ].map((s) => (
-          <div
-            key={s.label}
-            className={`flex-1 flex flex-col items-center py-2.5 rounded-xl border ${subScoreChipBg(s.value)}`}
-          >
-            <span className={`text-base font-bold leading-none ${subScoreColor(s.value)}`}>
-              {s.value}
-            </span>
-            <span className="text-zinc-500 text-xs mt-1">{s.label}</span>
-          </div>
-        ))}
+      {/* Recommendation */}
+      <div className="pt-3 border-t border-[#1e2a35]">
+        <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-1">Recomendación</p>
+        <p className="text-slate-400 text-sm leading-snug">→ {data.recommendation}</p>
       </div>
     </div>
   );

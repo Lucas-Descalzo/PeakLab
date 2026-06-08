@@ -22,10 +22,10 @@ export default function Nav() {
               key={l.href}
               href={l.href}
               className={`flex flex-col items-center py-3 px-4 text-xs transition-colors ${
-                active ? "text-blue-400" : "text-zinc-500 hover:text-zinc-200"
+                active ? "text-lime-400" : "text-zinc-500 hover:text-zinc-200"
               }`}
             >
-              <span className={`text-xl mb-0.5 ${active ? "drop-shadow-[0_0_8px_rgba(59,130,246,0.6)]" : ""}`}>
+              <span className={`text-xl mb-0.5 ${active ? "drop-shadow-[0_0_8px_rgba(74,222,128,0.6)]" : ""}`}>
                 {l.icon}
               </span>
               <span className={active ? "font-semibold" : ""}>{l.label}</span>
