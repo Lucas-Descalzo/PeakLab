@@ -1,48 +1,19 @@
 import { NextResponse } from "next/server";
 import { calcReadiness, calcTrainingLoad } from "@/lib/training-readiness";
+import { getLatestWellness, getRecentActivities } from "@/lib/db";
 
-// In production this fetches from Supabase.
-// Until Supabase is configured, returns data based on latest Garmin export.
 export async function GET() {
-  try {
-    // Try to fetch from Supabase if configured
-    const { isSupabaseConfigured, supabaseAdmin } = await import("@/lib/supabase");
-    if (isSupabaseConfigured()) {
-      const db = supabaseAdmin();
+  const wellness = await getLatestWellness();
+  const activities = await getRecentActivities(42);
 
-      const today = new Date().toISOString().split("T")[0];
+  const activityData = activities.map((a) => ({
+    date: a.date,
+    duration_s: a.duration_s,
+    avg_hr: a.avg_hr,
+    distance_m: a.distance_m,
+  }));
 
-      // Get latest wellness entry
-      const { data: wellness } = await db
-        .from("wellness")
-        .select("*")
-        .lte("date", today)
-        .order("date", { ascending: false })
-        .limit(1)
-        .single();
-
-      // Get recent activities for load calculation
-      const { data: activities } = await db
-        .from("activities")
-        .select("date, duration_s, avg_hr, distance_m")
-        .lte("date", today)
-        .order("date", { ascending: false })
-        .limit(42);
-
-      const load = calcTrainingLoad(activities || []);
-      const readiness = calcReadiness(wellness || null, load);
-
-      return NextResponse.json({
-        ...readiness,
-        hrv: wellness?.hrv,
-      });
-    }
-  } catch {
-    // Fall through to demo data
-  }
-
-  // Demo data based on latest Garmin export (HRV 77, baseline 55-99)
-  const demoLoad = calcTrainingLoad([
+  const load = calcTrainingLoad(activityData.length > 0 ? activityData : [
     { date: "2026-06-02", duration_s: 1812, avg_hr: 163, distance_m: 5554 },
     { date: "2026-05-31", duration_s: 3486, avg_hr: 164, distance_m: 10324 },
     { date: "2026-05-28", duration_s: 2106, avg_hr: 167, distance_m: 6951 },
@@ -50,17 +21,15 @@ export async function GET() {
     { date: "2026-05-24", duration_s: 2767, avg_hr: 154, distance_m: 7951 },
   ]);
 
-  const readiness = calcReadiness(
-    {
-      date: "2026-06-06",
-      hrv: 77,
-      hrv_baseline_lower: 55,
-      hrv_baseline_upper: 99,
-      sleep_total_s: 8.2 * 3600,
-      sleep_score: 89,
-    },
-    demoLoad
-  );
+  const wellnessData = {
+    date: wellness?.date ?? "2026-06-06",
+    hrv: wellness?.hrv ?? 77,
+    hrv_baseline_lower: wellness?.hrv_baseline_lower ?? 55,
+    hrv_baseline_upper: wellness?.hrv_baseline_upper ?? 99,
+    sleep_total_s: wellness?.sleep_total_s ?? Math.round(8.2 * 3600),
+    sleep_score: wellness?.sleep_score ?? 89,
+  };
 
-  return NextResponse.json({ ...readiness, hrv: 77 });
+  const readiness = calcReadiness(wellnessData, load);
+  return NextResponse.json({ ...readiness, hrv: wellnessData.hrv });
 }
