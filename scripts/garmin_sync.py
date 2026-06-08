@@ -6,15 +6,21 @@ Funciona en dos modos:
   - GitHub Actions:    lee credenciales de variables de entorno del runner
 
 Uso:
-  python scripts/garmin_sync.py         # últimos 2 días
-  python scripts/garmin_sync.py 7       # últimos 7 días
-  python scripts/garmin_sync.py 30      # carga histórico completo
+  python scripts/garmin_sync.py           # últimos 2 días
+  python scripts/garmin_sync.py 7         # últimos 7 días
+  python scripts/garmin_sync.py 30        # carga histórico (en tandas)
+
+Manejo de rate limiting (429 Garmin SSO):
+  - Login: hasta 3 intentos con backoff de 2/5/10 minutos
+  - API calls: pausa de 1s entre requests
+  - Syncs largos: procesa de a 5 días con pausa de 8s entre tandas
 
 Dependencias: pip install garth requests python-dotenv
 """
 import os
 import sys
-import json
+import time
+import random
 import requests
 from datetime import date, timedelta
 from pathlib import Path
@@ -42,21 +48,74 @@ SYNC_SECRET = os.environ.get("SYNC_SECRET", "")
 TOKEN_DIR = Path.home() / ".garmin_tokens"
 
 
+def is_rate_limit_error(e: Exception) -> bool:
+    msg = str(e).lower()
+    return "429" in msg or "too many" in msg or "rate limit" in msg
+
+
+def garmin_api_call(path: str, **kwargs):
+    """Wrapper de garth.connectapi con retry en 429."""
+    max_attempts = 3
+    # Delays en segundos: 2min, 5min, 10min
+    delays = [120, 300, 600]
+    for attempt in range(max_attempts):
+        try:
+            result = garth.connectapi(path, **kwargs)
+            time.sleep(1)  # pausa cortés entre requests
+            return result
+        except Exception as e:
+            if is_rate_limit_error(e) and attempt < max_attempts - 1:
+                wait = delays[attempt] + random.uniform(0, 30)
+                print(f"  ⏳ Rate limit (429) en {path}. Esperando {wait:.0f}s (intento {attempt+2}/{max_attempts})...")
+                time.sleep(wait)
+            else:
+                raise
+
+
 def login():
     TOKEN_DIR.mkdir(exist_ok=True)
+
+    # Intentar reutilizar token cacheado primero
     try:
         garth.resume(str(TOKEN_DIR))
-        # Verificar que el token funciona
-        garth.connectapi("/userprofile-service/userprofile/personal-information")
-        print("✓ Token válido reutilizado.")
-    except Exception:
-        if not GARMIN_USER or not GARMIN_PASS:
-            print("ERROR: GARMIN_USER y GARMIN_PASS son requeridos.")
-            sys.exit(1)
-        print(f"Autenticando como {GARMIN_USER}...")
-        garth.login(GARMIN_USER, GARMIN_PASS)
-        garth.save(str(TOKEN_DIR))
-        print("✓ Login exitoso.")
+        garmin_api_call("/userprofile-service/userprofile/personal-information")
+        print("✓ Token válido reutilizado (sin login).")
+        return
+    except Exception as e:
+        if is_rate_limit_error(e):
+            print(f"⛔ Rate limit al verificar token: {e}")
+            raise
+        # Token inválido o expirado — necesita re-login
+        pass
+
+    if not GARMIN_USER or not GARMIN_PASS:
+        print("ERROR: GARMIN_USER y GARMIN_PASS son requeridos.")
+        sys.exit(1)
+
+    # Login con retry y backoff
+    max_attempts = 3
+    delays = [120, 300, 600]  # 2min, 5min, 10min
+    for attempt in range(max_attempts):
+        try:
+            print(f"Autenticando como {GARMIN_USER} (intento {attempt+1}/{max_attempts})...")
+            garth.login(GARMIN_USER, GARMIN_PASS)
+            garth.save(str(TOKEN_DIR))
+            print("✓ Login exitoso.")
+            return
+        except Exception as e:
+            if is_rate_limit_error(e):
+                if attempt < max_attempts - 1:
+                    wait = delays[attempt] + random.uniform(0, 60)
+                    print(f"⏳ Rate limit en SSO (429). Garmin bloqueó temporalmente.")
+                    print(f"   Esperando {wait/60:.1f} minutos antes del intento {attempt+2}...")
+                    time.sleep(wait)
+                else:
+                    print("⛔ Garmin sigue bloqueando después de 3 intentos.")
+                    print("   Esperá 30-60 minutos y volvé a ejecutar el workflow.")
+                    sys.exit(1)
+            else:
+                print(f"✗ Error de login: {e}")
+                sys.exit(1)
 
 
 def post(endpoint: str, data: dict) -> bool:
@@ -78,9 +137,8 @@ def sync_wellness(day: date):
     day_str = day.isoformat()
     data = {"date": day_str}
 
-    # HRV
     try:
-        hrv_data = garth.connectapi(f"/hrv-service/hrv/{day_str}")
+        hrv_data = garmin_api_call(f"/hrv-service/hrv/{day_str}")
         if hrv_data and "hrvSummary" in hrv_data:
             s = hrv_data["hrvSummary"]
             data["hrv"] = s.get("lastNight")
@@ -90,11 +148,8 @@ def sync_wellness(day: date):
     except Exception as e:
         print(f"  HRV error: {e}")
 
-    # Sueño
     try:
-        sleep_data = garth.connectapi(
-            f"/wellness-service/wellness/dailySleepData/{day_str}"
-        )
+        sleep_data = garmin_api_call(f"/wellness-service/wellness/dailySleepData/{day_str}")
         if sleep_data:
             dto = sleep_data.get("dailySleepDTO") or sleep_data
             if isinstance(dto, dict):
@@ -118,11 +173,8 @@ def sync_wellness(day: date):
     except Exception as e:
         print(f"  Sleep error: {e}")
 
-    # FC en reposo
     try:
-        hr_data = garth.connectapi(
-            f"/wellness-service/wellness/dailyHeartRate/{day_str}"
-        )
+        hr_data = garmin_api_call(f"/wellness-service/wellness/dailyHeartRate/{day_str}")
         if hr_data:
             data["resting_hr"] = hr_data.get("restingHeartRate")
     except Exception as e:
@@ -131,55 +183,83 @@ def sync_wellness(day: date):
     ok = post("/api/sync/wellness", data)
     hrv_val = data.get("hrv", "–")
     sleep_h = round(data.get("sleep_total_s", 0) / 3600, 1) if data.get("sleep_total_s") else "–"
-    status = "✓" if ok else "✗"
-    print(f"  {status} Wellness {day_str}: HRV {hrv_val}ms | Sueño {sleep_h}h")
+    print(f"  {'✓' if ok else '✗'} Wellness {day_str}: HRV {hrv_val}ms | Sueño {sleep_h}h")
 
 
 def sync_activities(days_back: int):
     start_str = (date.today() - timedelta(days=days_back)).isoformat()
     try:
-        activities = garth.connectapi(
+        activities = garmin_api_call(
             f"/activitylist-service/activities/search/activities"
-            f"?startDate={start_str}&limit=50&activityType=running"
+            f"?startDate={start_str}&limit=50"
         )
         if not activities:
-            print("  No se encontraron actividades de running.")
+            print("  No se encontraron actividades.")
             return
 
         running_types = {"running", "trail_running", "indoor_running", "treadmill_running"}
+        count = 0
         for act in activities:
             type_key = act.get("activityType", {}).get("typeKey", "")
             if type_key not in running_types:
                 continue
-
             ok = post("/api/sync/activity", act)
             name = act.get("activityName", "Run")
-            dist_km = round(act.get("distance", 0) / 100000, 1)  # cm → km
-            status = "✓" if ok else "✗"
-            print(f"  {status} Actividad {name} — {dist_km}km")
-
+            dist_km = round(act.get("distance", 0) / 100000, 1)
+            print(f"  {'✓' if ok else '✗'} {name} — {dist_km}km")
+            count += 1
+            time.sleep(0.5)  # pequeña pausa entre actividades
+        if count == 0:
+            print("  No se encontraron actividades de running.")
     except Exception as e:
         print(f"  Error obteniendo actividades: {e}")
+
+
+# ── Procesamiento en tandas para syncs largos ─────────────────────────────────
+
+CHUNK_SIZE = 5          # días por tanda
+CHUNK_DELAY_S = 8       # segundos de pausa entre tandas
+
+def sync_in_chunks(days_back: int):
+    """Para syncs de más de 5 días, procesa de a 5 con pausa entre tandas."""
+    total_chunks = (days_back + CHUNK_SIZE - 1) // CHUNK_SIZE
+    offsets = list(range(days_back))
+
+    for chunk_idx in range(total_chunks):
+        chunk = offsets[chunk_idx * CHUNK_SIZE : (chunk_idx + 1) * CHUNK_SIZE]
+        if chunk_idx > 0:
+            print(f"\n  ⏸  Pausa {CHUNK_DELAY_S}s entre tandas ({chunk_idx}/{total_chunks})...")
+            time.sleep(CHUNK_DELAY_S)
+
+        print(f"\n📊 Tanda {chunk_idx+1}/{total_chunks} — wellness...")
+        for offset in chunk:
+            sync_wellness(date.today() - timedelta(days=offset))
+
+    print(f"\n🏃 Sincronizando actividades ({days_back} días)...")
+    sync_activities(days_back)
 
 
 def main():
     days = int(sys.argv[1]) if len(sys.argv) > 1 else 2
 
     print(f"\n{'='*50}")
-    print(f"PeakLab — Garmin Sync ({days} días hacia atrás)")
-    print(f"App: {APP_URL}")
+    print(f"PeakLab — Garmin Sync")
+    print(f"Días: {days} | App: {APP_URL}")
     print(f"{'='*50}\n")
 
     login()
 
-    print("\n📊 Sincronizando wellness (HRV + sueño)...")
-    for i in range(days):
-        sync_wellness(date.today() - timedelta(days=i))
+    if days <= CHUNK_SIZE:
+        print("\n📊 Sincronizando wellness...")
+        for i in range(days):
+            sync_wellness(date.today() - timedelta(days=i))
+        print("\n🏃 Sincronizando actividades...")
+        sync_activities(days)
+    else:
+        print(f"\n📦 Sync largo ({days} días) — procesando en tandas de {CHUNK_SIZE}...")
+        sync_in_chunks(days)
 
-    print("\n🏃 Sincronizando actividades de running...")
-    sync_activities(days)
-
-    print(f"\n✅ Sync completo.")
+    print("\n✅ Sync completo.")
 
 
 if __name__ == "__main__":

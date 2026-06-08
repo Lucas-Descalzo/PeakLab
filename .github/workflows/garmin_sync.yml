@@ -5,12 +5,17 @@ on:
     # Todos los días a las 11:00 UTC = 8:00 AM Argentina (UTC-3)
     - cron: '0 11 * * *'
   workflow_dispatch:
-    # Permite ejecutarlo manualmente desde GitHub → Actions
+    inputs:
+      days:
+        description: 'Días hacia atrás a sincronizar'
+        required: false
+        default: '2'
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 90 min: suficiente para 3 reintentos de login con backoff (2+5+10 min)
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -26,24 +31,30 @@ jobs:
       - name: Install dependencies
         run: pip install -r scripts/requirements.txt
 
-      - name: Restore Garmin tokens (cache)
+      # Cache de tokens Garmin: evita hacer login en cada run
+      - name: Restore Garmin tokens
         uses: actions/cache@v4
         with:
           path: ~/.garmin_tokens
-          key: garmin-tokens-${{ github.actor }}
+          key: garmin-tokens-v1
           restore-keys: garmin-tokens-
 
-      - name: Run Garmin sync (last 2 days)
+      - name: Run Garmin sync
         env:
           GARMIN_USER: ${{ secrets.GARMIN_USER }}
           GARMIN_PASS: ${{ secrets.GARMIN_PASS }}
           APP_URL: ${{ secrets.APP_URL }}
           SYNC_SECRET: ${{ secrets.SYNC_SECRET }}
-        run: python scripts/garmin_sync.py 2
+        run: |
+          DAYS=${{ github.event.inputs.days || '2' }}
+          echo "Sincronizando $DAYS días..."
+          python scripts/garmin_sync.py $DAYS
 
-      - name: Save Garmin tokens (cache)
-        uses: actions/cache/save@v4
+      # Guardar tokens aunque el step anterior haya fallado,
+      # para que el próximo run los reutilice y evite el SSO
+      - name: Save Garmin tokens
         if: always()
+        uses: actions/cache/save@v4
         with:
           path: ~/.garmin_tokens
-          key: garmin-tokens-${{ github.actor }}
+          key: garmin-tokens-v1
