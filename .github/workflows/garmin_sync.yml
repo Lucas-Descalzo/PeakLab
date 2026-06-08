@@ -1,0 +1,48 @@
+name: Garmin Daily Sync
+
+on:
+  schedule:
+    # Todos los días a las 11:00 UTC = 8:00 AM Argentina (UTC-3)
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+    # Permite ejecutarlo manualmente desde GitHub → Actions
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install garth requests python-dotenv
+
+      - name: Restore Garmin tokens (cache)
+        uses: actions/cache@v4
+        with:
+          path: ~/.garmin_tokens
+          key: garmin-tokens-${{ github.actor }}
+          restore-keys: garmin-tokens-
+
+      - name: Run Garmin sync (last 2 days)
+        env:
+          GARMIN_USER: ${{ secrets.GARMIN_USER }}
+          GARMIN_PASS: ${{ secrets.GARMIN_PASS }}
+          APP_URL: ${{ secrets.APP_URL }}
+          SYNC_SECRET: ${{ secrets.SYNC_SECRET }}
+        run: python scripts/garmin_sync.py 2
+
+      - name: Save Garmin tokens (cache)
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ~/.garmin_tokens
+          key: garmin-tokens-${{ github.actor }}

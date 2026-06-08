@@ -1,9 +1,7 @@
 /**
- * Storage layer — uses Vercel KV when available, localStorage fallback in browser.
- * Vercel KV is Redis. Schema:
- *   wellness:{date}        → WellnessEntry JSON
- *   activities:list        → sorted set of activity JSON strings (by date)
- *   gym:sessions           → list of GymSession JSON strings
+ * Storage — Upstash Redis.
+ * Sin Upstash configurado, todas las operaciones son no-ops y la app
+ * funciona con datos estáticos de fallback.
  */
 import type { GymSession } from "./gym-storage";
 
@@ -35,46 +33,38 @@ export interface ActivityEntry {
   training_effect?: number;
 }
 
-function isKVConfigured(): boolean {
-  return !!(process.env.KV_REST_API_URL && !process.env.KV_REST_API_URL.includes("your_"));
+function isConfigured(): boolean {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  return !!(url && !url.includes("your_") && url.startsWith("http"));
 }
 
-async function getKV() {
-  const { kv } = await import("@vercel/kv");
-  return kv;
+async function redis() {
+  const { Redis } = await import("@upstash/redis");
+  return new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL!,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  });
 }
 
 // ── Wellness ──────────────────────────────────────────────────────────────────
 
 export async function upsertWellness(entry: WellnessEntry): Promise<void> {
-  if (!isKVConfigured()) return;
-  const kv = await getKV();
-  await kv.set(`wellness:${entry.date}`, JSON.stringify(entry));
-}
-
-export async function getWellness(date: string): Promise<WellnessEntry | null> {
-  if (!isKVConfigured()) return null;
-  try {
-    const kv = await getKV();
-    const raw = await kv.get<string>(`wellness:${date}`);
-    return raw ? JSON.parse(raw as string) : null;
-  } catch {
-    return null;
-  }
+  if (!isConfigured()) return;
+  const r = await redis();
+  await r.set(`wellness:${entry.date}`, JSON.stringify(entry));
 }
 
 export async function getLatestWellness(): Promise<WellnessEntry | null> {
-  if (!isKVConfigured()) return null;
+  if (!isConfigured()) return null;
   try {
-    const kv = await getKV();
-    // Get last 7 days and return the most recent one with data
+    const r = await redis();
     const today = new Date();
     for (let i = 0; i < 7; i++) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split("T")[0];
-      const entry = await kv.get<string>(`wellness:${dateStr}`);
-      if (entry) return JSON.parse(entry as string);
+      const key = `wellness:${d.toISOString().split("T")[0]}`;
+      const raw = await r.get<string>(key);
+      if (raw) return JSON.parse(raw as string);
     }
     return null;
   } catch {
@@ -85,22 +75,24 @@ export async function getLatestWellness(): Promise<WellnessEntry | null> {
 // ── Activities ────────────────────────────────────────────────────────────────
 
 export async function upsertActivity(activity: ActivityEntry): Promise<void> {
-  if (!isKVConfigured()) return;
-  const kv = await getKV();
-  const key = `activity:${activity.garmin_id || activity.strava_id || activity.date + "_" + activity.name}`;
-  await kv.set(key, JSON.stringify(activity));
-  // Keep an index: sorted set by date
-  await (kv as any).zadd("activities:index", { score: new Date(activity.date).getTime(), member: key });
+  if (!isConfigured()) return;
+  const r = await redis();
+  const key = `activity:${activity.garmin_id ?? activity.strava_id ?? `${activity.date}_${activity.name.replace(/\s+/g, "_")}`}`;
+  await r.set(key, JSON.stringify(activity));
+  await r.zadd("activities:index", {
+    score: new Date(activity.date).getTime(),
+    member: key,
+  });
 }
 
 export async function getRecentActivities(limit = 10): Promise<ActivityEntry[]> {
-  if (!isKVConfigured()) return [];
+  if (!isConfigured()) return [];
   try {
-    const kv = await getKV();
-    const keys = await (kv as any).zrange("activities:index", 0, limit - 1, { rev: true }) as string[];
-    if (!keys || keys.length === 0) return [];
-    const results = await Promise.all(keys.map((k: string) => kv.get<string>(k)));
-    return results.filter(Boolean).map((r) => JSON.parse(r as string));
+    const r = await redis();
+    const keys = await r.zrange("activities:index", 0, limit - 1, { rev: true }) as string[];
+    if (!keys?.length) return [];
+    const vals = await Promise.all(keys.map((k) => r.get<string>(k)));
+    return vals.filter(Boolean).map((v) => JSON.parse(v as string));
   } catch {
     return [];
   }
@@ -109,24 +101,22 @@ export async function getRecentActivities(limit = 10): Promise<ActivityEntry[]> 
 // ── Gym Sessions ──────────────────────────────────────────────────────────────
 
 export async function saveGymSession(session: Omit<GymSession, "id">): Promise<GymSession> {
-  const id = `gym_${Date.now()}`;
-  const full: GymSession = { ...session, id };
-
-  if (isKVConfigured()) {
+  const full: GymSession = { ...session, id: `gym_${Date.now()}` };
+  if (isConfigured()) {
     try {
-      const kv = await getKV();
-      await kv.lpush("gym:sessions", JSON.stringify(full));
+      const r = await redis();
+      await r.lpush("gym:sessions", JSON.stringify(full));
     } catch {}
   }
   return full;
 }
 
 export async function getGymSessions(limit = 50): Promise<GymSession[]> {
-  if (!isKVConfigured()) return [];
+  if (!isConfigured()) return [];
   try {
-    const kv = await getKV();
-    const raw = await kv.lrange("gym:sessions", 0, limit - 1);
-    return (raw as string[]).map((r) => JSON.parse(r));
+    const r = await redis();
+    const raw = await r.lrange("gym:sessions", 0, limit - 1) as string[];
+    return raw.map((s) => JSON.parse(s));
   } catch {
     return [];
   }
