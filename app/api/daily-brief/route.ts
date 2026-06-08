@@ -35,7 +35,8 @@ export async function GET() {
   const today = new Date().toISOString().split("T")[0]
 
   // Check cache
-  let redis: ReturnType<typeof import("@upstash/redis")["Redis"]["prototype"]["constructor"]> | null = null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let redis: any = null
   try {
     const { Redis } = await import("@upstash/redis")
     if (process.env.UPSTASH_REDIS_REST_URL?.startsWith("http")) {
