@@ -43,12 +43,15 @@ export default function WeekSummary({
   const todayDow = new Date().getDay();
   const selectedWorkout = workouts.find((w) => w.date === selectedDate) ?? null;
 
-  // Completion stats
+  // Completion stats — all workouts (including rest days) count toward total per spec
+  const completed = workouts.filter((w) => w.date < today).length;
+  const total = workouts.length;
+  const progressPct = total > 0 ? (completed / total) * 100 : 0;
+  // For display, non-rest workouts only
   const totalWorkouts = workouts.filter((w) => w.type !== "rest").length;
   const completedWorkouts = workouts.filter(
     (w) => w.type !== "rest" && w.date < today
   ).length;
-  const progressPct = totalWorkouts > 0 ? (completedWorkouts / totalWorkouts) * 100 : 0;
 
   function handleDayClick(dow: number) {
     const w = byDay[dow];
@@ -63,11 +66,14 @@ export default function WeekSummary({
         <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
           Semana {currentWeek}
         </h2>
-        <span className="text-slate-400 font-semibold text-sm">{completedWorkouts}/{totalWorkouts} completados</span>
+        <span className="text-slate-100 font-semibold text-sm">
+          {completedWorkouts}/{totalWorkouts}{" "}
+          <span className="text-slate-500 font-normal">completados</span>
+        </span>
       </div>
 
       {/* Progress bar */}
-      <div className="w-full h-1.5 bg-[#1e2a35] rounded-full mb-4 overflow-hidden">
+      <div className="w-full h-2 bg-[#1e2a35] rounded-full mb-4 overflow-hidden">
         <div
           className="h-full bg-lime-400 rounded-full transition-all duration-500"
           style={{ width: `${progressPct}%` }}

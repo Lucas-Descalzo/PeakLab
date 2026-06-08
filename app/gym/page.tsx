@@ -50,6 +50,52 @@ const PHASE_COLORS: Record<string, string> = {
   Recovery:  "bg-red-500/20 text-red-300",
 };
 
+// ── CounterInput ──────────────────────────────────────────────────────────────
+function CounterInput({
+  value,
+  onChange,
+  step = 1,
+  min = 0,
+  max,
+  disabled = false,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  step?: number;
+  min?: number;
+  max?: number;
+  disabled?: boolean;
+}) {
+  const dec = () => onChange(Math.max(min, parseFloat((value - step).toFixed(2))));
+  const inc = () => {
+    const next = parseFloat((value + step).toFixed(2));
+    onChange(max !== undefined ? Math.min(max, next) : next);
+  };
+  const display = Number.isInteger(value) ? String(value) : value.toFixed(1);
+  return (
+    <div className={`flex items-center bg-[#0f1419] border border-[#1e2a35] rounded-xl overflow-hidden ${disabled ? "opacity-60" : ""}`}>
+      <button
+        type="button"
+        onClick={dec}
+        disabled={disabled}
+        className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-lime-400 text-lg transition-colors shrink-0"
+      >
+        −
+      </button>
+      <span className="w-10 text-center text-slate-100 font-medium text-sm select-none">{display}</span>
+      <button
+        type="button"
+        onClick={inc}
+        disabled={disabled}
+        className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-lime-400 text-lg transition-colors shrink-0"
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+// ── ExerciseRow (plan card) ───────────────────────────────────────────────────
 function ExerciseRow({ ex }: { ex: GymExercise }) {
   return (
     <div className="flex items-center justify-between py-1.5 border-b border-[#1e2a35] last:border-0">
@@ -69,6 +115,7 @@ function ExerciseRow({ ex }: { ex: GymExercise }) {
   );
 }
 
+// ── TodayPlanCard ─────────────────────────────────────────────────────────────
 function TodayPlanCard({
   gymDay,
   onStartSession,
@@ -144,6 +191,196 @@ function TodayPlanCard({
   );
 }
 
+// ── ExerciseForm (accordion sets + chips) ────────────────────────────────────
+function ExerciseForm({
+  ex,
+  ei,
+  formType,
+  onUpdateName,
+  onUpdateSet,
+  onAddSet,
+  onRemoveSet,
+  onRemoveExercise,
+  showRemove,
+}: {
+  ex: Exercise;
+  ei: number;
+  formType: string;
+  onUpdateName: (ei: number, name: string) => void;
+  onUpdateSet: (ei: number, si: number, field: "kg" | "reps" | "rir" | "completed", value: string | boolean | number) => void;
+  onAddSet: (ei: number) => void;
+  onRemoveSet: (ei: number, si: number) => void;
+  onRemoveExercise: (ei: number) => void;
+  showRemove: boolean;
+}) {
+  // default expanded = last set index
+  const [expandedSet, setExpandedSet] = useState<number>(ex.sets.length - 1);
+
+  // when sets are added, expand the new last one
+  useEffect(() => {
+    setExpandedSet(ex.sets.length - 1);
+  }, [ex.sets.length]);
+
+  return (
+    <div className="bg-[#080c10] border border-[#1e2a35] rounded-xl p-3 space-y-3">
+      {/* Exercise name + remove */}
+      <div className="flex gap-2 items-center">
+        <input
+          type="text"
+          placeholder="Escribí o seleccioná un ejercicio..."
+          value={ex.name}
+          onChange={(e) => onUpdateName(ei, e.target.value)}
+          className="flex-1 bg-[#0f1419] border border-[#1e2a35] rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-lime-400/50 transition-colors"
+        />
+        {showRemove && (
+          <button
+            type="button"
+            onClick={() => onRemoveExercise(ei)}
+            className="text-slate-500 hover:text-red-400 text-sm px-1 transition-colors"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      {/* Suggestion chips */}
+      <div className="flex flex-wrap gap-1.5">
+        {(SUGGESTED_EXERCISES[formType] || []).map((name) => (
+          <button
+            key={name}
+            type="button"
+            onClick={() => onUpdateName(ei, name)}
+            className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+              ex.name === name
+                ? "border-lime-400 text-lime-400 bg-lime-400/10"
+                : "border-[#1e2a35] text-slate-400 hover:border-lime-400 hover:text-lime-400"
+            }`}
+          >
+            {name}
+          </button>
+        ))}
+      </div>
+
+      {/* Sets accordion */}
+      <div className="space-y-1">
+        {ex.sets.map((set, si) => {
+          const isExpanded = expandedSet === si;
+          const summaryText = `S${si + 1} — ${set.kg}kg × ${set.reps} reps${set.rir !== undefined ? ` (RIR ${set.rir})` : ""}`;
+          return (
+            <div
+              key={si}
+              className={`rounded-lg border transition-colors ${
+                set.completed
+                  ? "border-lime-400/30 bg-lime-400/5"
+                  : "border-[#1e2a35] bg-[#0f1419]"
+              }`}
+            >
+              {/* Collapsed summary row */}
+              {!isExpanded ? (
+                <button
+                  type="button"
+                  onClick={() => setExpandedSet(si)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs text-left"
+                >
+                  <span className={set.completed ? "text-slate-500 line-through" : "text-slate-300"}>
+                    {summaryText}
+                  </span>
+                  {set.completed && (
+                    <span className="text-lime-400 text-xs font-bold ml-2">✓</span>
+                  )}
+                </button>
+              ) : (
+                /* Expanded set editor */
+                <div className="p-2.5 space-y-2">
+                  {/* Set label + collapse button */}
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs font-semibold ${set.completed ? "text-lime-400" : "text-slate-400"}`}>
+                      Serie {si + 1}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {ex.sets.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => onRemoveSet(ei, si)}
+                          className="text-slate-600 hover:text-red-400 text-xs transition-colors"
+                        >
+                          ✕
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedSet(-1)}
+                        className="text-slate-600 hover:text-slate-400 text-xs transition-colors"
+                      >
+                        ▲
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Counter inputs row */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="flex flex-col items-center gap-1">
+                      <span className="text-slate-600 text-xs">Peso (kg)</span>
+                      <CounterInput
+                        value={set.kg}
+                        onChange={(v) => onUpdateSet(ei, si, "kg", v)}
+                        step={2.5}
+                        min={0}
+                        disabled={set.completed}
+                      />
+                    </div>
+                    <div className="flex flex-col items-center gap-1">
+                      <span className="text-slate-600 text-xs">Reps</span>
+                      <CounterInput
+                        value={set.reps}
+                        onChange={(v) => onUpdateSet(ei, si, "reps", v)}
+                        step={1}
+                        min={1}
+                        disabled={set.completed}
+                      />
+                    </div>
+                    <div className="flex flex-col items-center gap-1">
+                      <span className="text-slate-600 text-xs">RIR</span>
+                      <CounterInput
+                        value={set.rir ?? 0}
+                        onChange={(v) => onUpdateSet(ei, si, "rir", v)}
+                        step={1}
+                        min={0}
+                        max={5}
+                        disabled={set.completed}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Completed checkbox */}
+                  <label className="flex items-center gap-2 cursor-pointer select-none mt-1">
+                    <input
+                      type="checkbox"
+                      checked={!!set.completed}
+                      onChange={(e) => onUpdateSet(ei, si, "completed", e.target.checked)}
+                      className="w-4 h-4 accent-lime-400 cursor-pointer"
+                    />
+                    <span className="text-xs text-slate-400">Serie completada</span>
+                  </label>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onAddSet(ei)}
+        className="text-xs text-lime-400 hover:text-lime-300 transition-colors"
+      >
+        + Serie
+      </button>
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function GymPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
@@ -218,16 +455,25 @@ export default function GymPage() {
     });
   }
 
-  function updateSet(ei: number, si: number, field: "kg" | "reps" | "rir" | "completed", value: string | boolean) {
+  function updateSet(
+    ei: number,
+    si: number,
+    field: "kg" | "reps" | "rir" | "completed",
+    value: string | boolean | number
+  ) {
     setForm((f) => {
       const exs = [...f.exercises];
       const sets = [...exs[ei].sets];
       if (field === "completed") {
         sets[si] = { ...sets[si], completed: value as boolean };
       } else if (field === "rir") {
-        sets[si] = { ...sets[si], rir: value === "" ? undefined : parseInt(value as string) };
+        if (typeof value === "number") {
+          sets[si] = { ...sets[si], rir: value };
+        } else {
+          sets[si] = { ...sets[si], rir: value === "" ? undefined : parseInt(value as string) };
+        }
       } else {
-        sets[si] = { ...sets[si], [field]: parseFloat(value as string) || 0 };
+        sets[si] = { ...sets[si], [field]: typeof value === "number" ? value : (parseFloat(value as string) || 0) };
       }
       exs[ei] = { ...exs[ei], sets };
       return { ...f, exercises: exs };
@@ -282,6 +528,7 @@ export default function GymPage() {
               {GYM_TYPES.map((t) => (
                 <button
                   key={t}
+                  type="button"
                   onClick={() => setForm((f) => ({ ...f, type: t }))}
                   className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${
                     form.type === t
@@ -299,88 +546,23 @@ export default function GymPage() {
         {/* Exercises */}
         <div className="space-y-4">
           {form.exercises.map((ex, ei) => (
-            <div key={ei} className="bg-[#080c10] border border-[#1e2a35] rounded-xl p-3 space-y-2">
-              <div className="flex gap-2 items-center">
-                <input
-                  type="text"
-                  placeholder="Ejercicio"
-                  value={ex.name}
-                  onChange={(e) => updateExerciseName(ei, e.target.value)}
-                  list={`suggestions-${ei}`}
-                  className="flex-1 bg-[#0f1419] border border-[#1e2a35] rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600"
-                />
-                <datalist id={`suggestions-${ei}`}>
-                  {(SUGGESTED_EXERCISES[form.type] || []).map((s) => (
-                    <option key={s} value={s} />
-                  ))}
-                </datalist>
-                {form.exercises.length > 1 && (
-                  <button onClick={() => removeExercise(ei)} className="text-slate-500 hover:text-red-400 text-sm px-1">✕</button>
-                )}
-              </div>
-
-              {/* Sets header */}
-              <div className="flex items-center gap-2 px-1">
-                <span className="text-slate-600 text-xs w-6" />
-                <span className="text-slate-600 text-xs w-16 text-center">Peso (kg)</span>
-                <span className="text-slate-600 text-xs w-14 text-center">Reps</span>
-                <span className="text-slate-600 text-xs w-10 text-center">RIR</span>
-                <span className="text-slate-600 text-xs ml-auto text-center">✓</span>
-              </div>
-
-              {/* Sets */}
-              <div className="space-y-1.5">
-                {ex.sets.map((set, si) => (
-                  <div
-                    key={si}
-                    className={`flex items-center gap-2 rounded-lg px-1 py-1 transition-colors ${
-                      set.completed ? "bg-lime-400/10" : ""
-                    }`}
-                  >
-                    <span className={`text-xs w-6 ${set.completed ? "text-slate-500" : "text-slate-600"}`}>S{si + 1}</span>
-                    <input
-                      type="number"
-                      placeholder="kg"
-                      value={set.kg || ""}
-                      onChange={(e) => updateSet(ei, si, "kg", e.target.value)}
-                      className={`w-16 bg-[#0f1419] border border-[#1e2a35] rounded-lg px-2 py-1 text-sm text-center ${set.completed ? "text-slate-400 opacity-70" : "text-slate-200"}`}
-                    />
-                    <input
-                      type="number"
-                      placeholder="reps"
-                      value={set.reps || ""}
-                      onChange={(e) => updateSet(ei, si, "reps", e.target.value)}
-                      className={`w-14 bg-[#0f1419] border border-[#1e2a35] rounded-lg px-2 py-1 text-sm text-center ${set.completed ? "text-slate-400 opacity-70" : "text-slate-200"}`}
-                    />
-                    <input
-                      type="number"
-                      placeholder="RIR"
-                      min={0}
-                      max={5}
-                      value={set.rir ?? ""}
-                      onChange={(e) => updateSet(ei, si, "rir", e.target.value)}
-                      className={`w-10 bg-[#0f1419] border border-[#1e2a35] rounded-lg px-1 py-1 text-sm text-center ${set.completed ? "text-slate-400 opacity-70" : "text-slate-200"}`}
-                    />
-                    <input
-                      type="checkbox"
-                      checked={!!set.completed}
-                      onChange={(e) => updateSet(ei, si, "completed", e.target.checked)}
-                      className="ml-auto w-4 h-4 accent-lime-400 cursor-pointer"
-                    />
-                    {ex.sets.length > 1 && (
-                      <button onClick={() => removeSet(ei, si)} className="text-slate-600 hover:text-red-400 text-xs">✕</button>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <button onClick={() => addSet(ei)} className="text-xs text-lime-400 hover:text-lime-300 mt-1">
-                + Serie
-              </button>
-            </div>
+            <ExerciseForm
+              key={ei}
+              ex={ex}
+              ei={ei}
+              formType={form.type}
+              onUpdateName={updateExerciseName}
+              onUpdateSet={updateSet}
+              onAddSet={addSet}
+              onRemoveSet={removeSet}
+              onRemoveExercise={removeExercise}
+              showRemove={form.exercises.length > 1}
+            />
           ))}
         </div>
 
         <button
+          type="button"
           onClick={addExercise}
           className="w-full py-2 border border-dashed border-[#1e2a35] rounded-xl text-sm text-slate-500 hover:border-lime-400/30 hover:text-slate-300 transition-colors"
         >
@@ -411,6 +593,7 @@ export default function GymPage() {
         </div>
 
         <button
+          type="button"
           onClick={save}
           disabled={saving}
           className="w-full py-3 bg-lime-400 hover:bg-lime-300 disabled:opacity-50 text-[#080c10] font-bold rounded-xl transition-colors"

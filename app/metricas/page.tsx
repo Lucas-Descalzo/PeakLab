@@ -1,5 +1,5 @@
 import { getRecentActivities, getLatestWellness } from "@/lib/db";
-import { calcTrainingLoad } from "@/lib/training-readiness";
+import TrainingLoadChart from "@/components/TrainingLoadChart";
 
 const STATIC_ACTIVITIES = [
   { date: "2026-06-02", name: "VO2 máximo", distance_m: 5554, duration_s: 1812, avg_hr: 163, training_effect: 3.5 },
@@ -38,28 +38,6 @@ export default async function MetricasPage() {
     : 50;
 
   const maxKm = Math.max(...WEEKLY_KM);
-
-  // Training load calculation
-  const load = calcTrainingLoad(STATIC_ACTIVITIES);
-  const atlRounded = Math.round(load.atl);
-  const ctlRounded = Math.round(load.ctl);
-  const tsbRounded = Math.round(load.tsb);
-
-  let loadStatus: string;
-  let loadStatusColor: string;
-  if (tsbRounded > 10) {
-    loadStatus = "Fresco";
-    loadStatusColor = "text-lime-400";
-  } else if (tsbRounded >= -5) {
-    loadStatus = "En forma";
-    loadStatusColor = "text-lime-400";
-  } else if (tsbRounded >= -20) {
-    loadStatus = "Fatigado";
-    loadStatusColor = "text-yellow-400";
-  } else {
-    loadStatus = "Muy fatigado";
-    loadStatusColor = "text-red-400";
-  }
 
   return (
     <div className="space-y-6">
@@ -210,31 +188,7 @@ export default async function MetricasPage() {
       </div>
 
       {/* Training Load section */}
-      <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
-        <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">
-          Carga de entrenamiento
-        </h2>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between py-1.5 border-b border-[#1e2a35]">
-            <span className="text-slate-400 text-sm">ATL <span className="text-slate-600 text-xs">(Carga aguda 7d)</span></span>
-            <span className="text-slate-200 font-bold text-sm font-mono">{atlRounded}</span>
-          </div>
-          <div className="flex items-center justify-between py-1.5 border-b border-[#1e2a35]">
-            <span className="text-slate-400 text-sm">CTL <span className="text-slate-600 text-xs">(Carga crónica 42d)</span></span>
-            <span className="text-slate-200 font-bold text-sm font-mono">{ctlRounded}</span>
-          </div>
-          <div className="flex items-center justify-between py-1.5 border-b border-[#1e2a35]">
-            <span className="text-slate-400 text-sm">TSB <span className="text-slate-600 text-xs">(Balance)</span></span>
-            <span className={`font-bold text-sm font-mono ${tsbRounded >= 0 ? "text-lime-400" : "text-orange-400"}`}>
-              {tsbRounded > 0 ? "+" : ""}{tsbRounded}
-            </span>
-          </div>
-          <div className="flex items-center justify-between py-1.5">
-            <span className="text-slate-400 text-sm">Estado</span>
-            <span className={`font-bold text-sm ${loadStatusColor}`}>{loadStatus}</span>
-          </div>
-        </div>
-      </div>
+      <TrainingLoadChart />
 
       {/* Personal Records */}
       <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">

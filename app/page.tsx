@@ -1,4 +1,4 @@
-import { getTodayWorkout, getCurrentWeek, buildPlan } from "@/lib/training-plan";
+import { getTodayWorkout, getCurrentWeek, buildPlan, WorkoutType } from "@/lib/training-plan";
 import WeekSummary from "@/components/WeekSummary";
 import ReadinessCardCompact from "@/components/ReadinessCardCompact";
 import Link from "next/link";
@@ -10,6 +10,17 @@ function getGreeting(): string {
   return "Buenos días";
 }
 
+function workoutIcon(type: WorkoutType): string {
+  switch (type) {
+    case "easy":     return "🟢";
+    case "quality":  return "⚡";
+    case "long":     return "🗺️";
+    case "race":     return "🏅";
+    case "recovery": return "💤";
+    default:         return "🏃";
+  }
+}
+
 export default function Dashboard() {
   const today = getTodayWorkout();
   const currentWeek = getCurrentWeek();
@@ -18,81 +29,66 @@ export default function Dashboard() {
   const greeting = getGreeting();
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 pb-4">
       {/* Header */}
-      <div className="pt-1">
-        <h1 className="text-2xl font-black text-slate-100 leading-tight">
-          {greeting}, Lucas 👋
-        </h1>
-        <p className="text-slate-500 text-sm mt-1">
-          Listo para tu mejor versión hoy.
-        </p>
+      <div className="pt-2">
+        <h1 className="text-2xl font-bold text-slate-100">{greeting}, Lucas 👋</h1>
+        <p className="text-slate-500 text-sm mt-0.5">Listo para tu mejor versión hoy.</p>
       </div>
 
-      {/* Card: Entrenamiento de hoy */}
-      <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-5">
-        <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-3">
-          Tu entrenamiento de hoy
-        </p>
+      {/* Today's workout */}
+      <section>
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">TU ENTRENAMIENTO DE HOY</p>
         {today ? (
-          <div>
-            <h2 className="text-slate-100 font-bold text-lg leading-tight">{today.title}</h2>
-            {today.description && (
-              <p className="text-slate-500 text-sm mt-1 leading-snug">{today.description}</p>
-            )}
-            <div className="flex items-center justify-between mt-4">
-              <div className="flex items-center gap-1.5">
-                <span className="text-lime-400 font-extrabold text-xl leading-none">{today.distanceKm}</span>
-                <span className="text-slate-500 text-sm">km</span>
+          <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-lime-400/10 flex items-center justify-center text-xl">
+                {workoutIcon(today.type)}
               </div>
-              <Link
-                href="/plan"
-                className="bg-lime-400 text-[#080c10] font-semibold rounded-xl px-4 py-2 text-sm"
-              >
-                Ver rutina →
-              </Link>
+              <div className="flex-1 min-w-0">
+                <p className="text-slate-100 font-semibold">{today.title}</p>
+                <p className="text-slate-500 text-sm">{today.description || today.phase}</p>
+              </div>
+              <span className="text-lime-400 font-bold flex-shrink-0">{today.distanceKm}km</span>
             </div>
+            <Link
+              href="/entrenamiento"
+              className="flex items-center justify-center gap-2 w-full py-2.5 bg-lime-400 text-[#080c10] font-semibold rounded-xl text-sm"
+            >
+              Ver rutina →
+            </Link>
           </div>
         ) : (
-          <div className="text-center py-2">
-            <p className="text-slate-100 font-bold text-base">Día de descanso</p>
-            <p className="text-slate-500 text-sm mt-1">El descanso es parte del plan.</p>
+          <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4 text-center">
+            <p className="text-2xl mb-1">😴</p>
+            <p className="text-slate-300 font-medium">Día de descanso</p>
+            <p className="text-slate-500 text-xs mt-1">El descanso es parte del plan.</p>
           </div>
         )}
-      </div>
+      </section>
 
-      {/* Card: Readiness */}
-      <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-5">
-        <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-3">
-          Tu readiness
-        </p>
-        <ReadinessCardCompact />
-      </div>
+      {/* Readiness */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">TU READINESS</p>
+          <Link href="/sueno" className="text-xs text-lime-400">Ver sueño →</Link>
+        </div>
+        <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
+          <ReadinessCardCompact />
+        </div>
+      </section>
 
-      {/* Week summary */}
-      <WeekSummary workouts={weekWorkouts} currentWeek={currentWeek} />
+      {/* Weekly summary */}
+      <section>
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">RESUMEN SEMANAL</p>
+        <WeekSummary workouts={weekWorkouts} currentWeek={currentWeek} />
+      </section>
 
-      {/* Stat cards */}
+      {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
-        <StatCard
-          icon="📅"
-          label="Semana"
-          value={`${currentWeek}/15`}
-          sub="del ciclo"
-        />
-        <StatCard
-          icon="🏃"
-          label="Media"
-          value="23 ago"
-          sub="obj 1:48–1:52"
-          highlight
-        />
-        <StatCard
-          icon="🏁"
-          label="Maratón"
-          value="20 sep"
-          sub="obj 4:00–4:10"
-        />
+        <StatCard icon="📅" label="Semana" value={`${currentWeek}/15`} sub="del ciclo" />
+        <StatCard icon="🏃" label="Media" value="23 ago" sub="meta 1:48-1:52" highlight />
+        <StatCard icon="🏅" label="Maratón" value="20 sep" sub="meta 4:00-4:10" />
       </div>
     </div>
   );
@@ -113,16 +109,13 @@ function StatCard({
 }) {
   return (
     <div
-      className={`rounded-xl p-3 border ${
+      className={`rounded-xl p-3 border flex flex-col gap-1.5 ${
         highlight
           ? "bg-lime-400/10 border-lime-400/30"
           : "bg-[#0f1419] border-[#1e2a35]"
       }`}
     >
-      <div className="flex items-center gap-1 mb-1.5">
-        <span className="text-base leading-none">{icon}</span>
-        <p className="text-slate-500 text-xs">{label}</p>
-      </div>
+      <span className="text-xl leading-none">{icon}</span>
       <p
         className={`font-extrabold text-base leading-none ${
           highlight ? "text-lime-400" : "text-slate-100"
@@ -130,7 +123,10 @@ function StatCard({
       >
         {value}
       </p>
-      <p className="text-slate-500 text-xs mt-1 leading-snug">{sub}</p>
+      <div>
+        <p className="text-slate-400 text-xs font-medium">{label}</p>
+        <p className="text-slate-500 text-xs leading-snug">{sub}</p>
+      </div>
     </div>
   );
 }

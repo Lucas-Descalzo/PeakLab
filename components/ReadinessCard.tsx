@@ -61,13 +61,13 @@ function GaugeSVG({ score, color }: { score: number; color: string }) {
 
 function factorStatus(score: number, type: "hrv" | "sleep" | "load"): { label: string; color: string; dotColor: string } {
   if (type === "load") {
-    if (score >= 70) return { label: "Bueno", color: "text-lime-400", dotColor: "bg-lime-400" };
-    if (score >= 40) return { label: "Alto", color: "text-yellow-400", dotColor: "bg-yellow-400" };
-    return { label: "Muy alto", color: "text-red-400", dotColor: "bg-red-400" };
+    if (score >= 70) return { label: "Moderada", color: "text-lime-400",   dotColor: "bg-lime-400" };
+    if (score >= 40) return { label: "Alta",     color: "text-yellow-400", dotColor: "bg-yellow-400" };
+    return                  { label: "Muy alta", color: "text-red-400",    dotColor: "bg-red-400" };
   }
-  if (score >= 70) return { label: "Óptimo", color: "text-lime-400", dotColor: "bg-lime-400" };
-  if (score >= 50) return { label: "Bueno", color: "text-yellow-400", dotColor: "bg-yellow-400" };
-  return { label: "Bajo", color: "text-red-400", dotColor: "bg-red-400" };
+  if (score >= 70) return { label: "Óptimo", color: "text-lime-400",   dotColor: "bg-lime-400" };
+  if (score >= 50) return { label: "Bueno",  color: "text-yellow-400", dotColor: "bg-yellow-400" };
+  return                  { label: "Bajo",   color: "text-red-400",    dotColor: "bg-red-400" };
 }
 
 export default function ReadinessCard() {
@@ -101,10 +101,16 @@ export default function ReadinessCard() {
 
   const textColor = TEXT_COLOR[data.color] || "text-lime-400";
 
-  const factors = [
-    { icon: "💓", name: "HRV", value: data.hrv_score, type: "hrv" as const },
-    { icon: "😴", name: "Sueño", value: data.sleep_score, type: "sleep" as const },
-    { icon: "⚡", name: "Carga", value: data.load_score, type: "load" as const },
+  const factors: Array<{
+    icon: string;
+    name: string;
+    value: number;
+    display: string;
+    type: "hrv" | "sleep" | "load";
+  }> = [
+    { icon: "🫀", name: "HRV",   value: data.hrv_score,   display: data.hrv ? `${data.hrv} ms` : `${data.hrv_score}`, type: "hrv" },
+    { icon: "😴", name: "Sueño", value: data.sleep_score, display: `${(data.sleep_score / 10).toFixed(1)}h`,            type: "sleep" },
+    { icon: "⚡", name: "Carga", value: data.load_score,  display: data.load_score >= 70 ? "Moderada" : data.load_score >= 40 ? "Alta" : "Muy alta", type: "load" },
   ];
 
   return (
@@ -149,9 +155,9 @@ export default function ReadinessCard() {
                   <span className="text-slate-400 text-sm">{f.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-slate-100 text-sm font-semibold font-mono">{f.value}</span>
-                  <span className={`w-2 h-2 rounded-full ${status.dotColor}`} />
-                  <span className={`text-xs font-medium ${status.color}`}>{status.label}</span>
+                  <span className="text-slate-100 text-sm font-semibold font-mono">{f.display}</span>
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${status.dotColor}`} />
+                  <span className={`text-xs font-medium w-14 text-right ${status.color}`}>{status.label}</span>
                 </div>
               </div>
             );
@@ -159,10 +165,10 @@ export default function ReadinessCard() {
         </div>
       </div>
 
-      {/* Recommendation */}
-      <div className="pt-3 border-t border-[#1e2a35]">
-        <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-1">Recomendación</p>
-        <p className="text-slate-400 text-sm leading-snug">→ {data.recommendation}</p>
+      {/* Recommendation callout */}
+      <div className="mt-4 bg-lime-400/5 border border-lime-400/20 rounded-xl p-3">
+        <p className="text-lime-400 text-xs font-semibold mb-1">● RECOMENDACIÓN</p>
+        <p className="text-slate-300 text-sm leading-snug">{data.recommendation}</p>
       </div>
     </div>
   );

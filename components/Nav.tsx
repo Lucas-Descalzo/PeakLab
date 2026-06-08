@@ -3,11 +3,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const links = [
-  { href: "/", label: "Hoy", icon: "⚡" },
-  { href: "/plan", label: "Plan", icon: "📅" },
-  { href: "/gym", label: "Gym", icon: "🏋️" },
-  { href: "/metricas", label: "Métricas", icon: "📊" },
-  { href: "/chat", label: "Coach", icon: "💬" },
+  { href: "/",              label: "Inicio",   icon: "⚡" },
+  { href: "/entrenamiento", label: "Entrena",  icon: "🏃" },
+  { href: "/gym",           label: "Registro", icon: "✏️" },
+  { href: "/metricas",      label: "Progreso", icon: "📊" },
+  { href: "/mas",           label: "Más",      icon: "⋯" },
 ];
 
 export default function Nav() {

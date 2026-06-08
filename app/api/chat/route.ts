@@ -1,6 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTodayWorkout, getCurrentWeek, buildPlan } from "@/lib/training-plan";
-import { isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase";
+import { getLatestWellness, getRecentActivities } from "@/lib/db";
+
+// Model fallback chain — tries newest first
+const GEMINI_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-preview-05-20",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
+];
+
+async function callGemini(apiKey: string, contents: object[], attempt = 0): Promise<string> {
+  const model = process.env.GEMINI_MODEL || GEMINI_MODELS[attempt] || GEMINI_MODELS[0];
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents,
+      generationConfig: { maxOutputTokens: 800, temperature: 0.7 },
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    // If model not found and we have fallbacks, try the next one
+    if ((res.status === 404 || res.status === 400) && attempt < GEMINI_MODELS.length - 1) {
+      console.log(`Model ${model} failed (${res.status}), trying fallback...`);
+      return callGemini(apiKey, contents, attempt + 1);
+    }
+    throw new Error(`Gemini ${res.status}: ${errText.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "Sin respuesta.";
+}
 
 async function buildContext(): Promise<string> {
   const today = new Date().toISOString().split("T")[0];
@@ -8,141 +43,93 @@ async function buildContext(): Promise<string> {
   const currentWeek = getCurrentWeek();
   const weekWorkouts = buildPlan().filter((w) => w.week === currentWeek);
 
-  let hrvInfo = "HRV: no disponible aún";
-  let recentActivities = "Actividades recientes: pendiente de sync Strava/Garmin";
-  let sleepInfo = "Sueño: no disponible aún";
+  // Load live data from Upstash
+  const [wellness, activities] = await Promise.all([
+    getLatestWellness().catch(() => null),
+    getRecentActivities(5).catch(() => []),
+  ]);
 
-  if (isSupabaseConfigured()) {
-    try {
-      const db = supabaseAdmin();
-      const { data: wellness } = await db
-        .from("wellness")
-        .select("*")
-        .lte("date", today)
-        .order("date", { ascending: false })
-        .limit(1)
-        .single();
+  const hrvInfo = wellness?.hrv
+    ? `HRV: ${wellness.hrv}ms (baseline ${wellness.hrv_baseline_lower}-${wellness.hrv_baseline_upper}ms)`
+    : "HRV: sin datos recientes";
 
-      if (wellness) {
-        const pct = wellness.hrv_baseline_lower && wellness.hrv_baseline_upper
-          ? Math.round(((wellness.hrv - wellness.hrv_baseline_lower) / (wellness.hrv_baseline_upper - wellness.hrv_baseline_lower)) * 100)
-          : null;
-        hrvInfo = `HRV hoy: ${wellness.hrv}ms (baseline ${wellness.hrv_baseline_lower}-${wellness.hrv_baseline_upper}ms${pct != null ? `, ${pct}% del rango` : ""})`;
-        if (wellness.sleep_total_s) {
-          const h = (wellness.sleep_total_s / 3600).toFixed(1);
-          sleepInfo = `Sueño anoche: ${h}h${wellness.sleep_score ? `, score ${wellness.sleep_score}` : ""}`;
-        }
-      }
+  const sleepInfo = wellness?.sleep_total_s
+    ? `Sueño anoche: ${(wellness.sleep_total_s / 3600).toFixed(1)}h${wellness.sleep_score ? `, score ${wellness.sleep_score}` : ""}`
+    : "Sueño: sin datos recientes";
 
-      const { data: activities } = await db
-        .from("activities")
-        .select("date, name, distance_m, duration_s, avg_hr, avg_pace_s_per_km")
-        .order("date", { ascending: false })
-        .limit(5);
-
-      if (activities && activities.length > 0) {
-        recentActivities = "Últimas corridas:\n" + activities.map((a) => {
-          const km = (a.distance_m / 1000).toFixed(1);
-          const min = Math.floor(a.duration_s / 60);
-          const pace = a.avg_pace_s_per_km
-            ? `${Math.floor(a.avg_pace_s_per_km / 60)}:${String(a.avg_pace_s_per_km % 60).padStart(2, "0")}/km`
-            : "-";
-          return `  ${a.date}: ${a.name} | ${km}km | ${min}min | ${pace} | HR ${a.avg_hr}`;
-        }).join("\n");
-      }
-    } catch {}
-  } else {
-    // Use static data from Garmin export
-    hrvInfo = "HRV hoy: 77ms (baseline 55-99ms, 50% del rango) — datos del último sync Garmin";
-    recentActivities = `Últimas corridas (datos Garmin):
+  const activityLines = activities.length > 0
+    ? "Últimas corridas:\n" + activities.map((a) => {
+        const km = (a.distance_m / 1000).toFixed(1);
+        const min = Math.floor(a.duration_s / 60);
+        const pace = a.avg_pace_s_per_km
+          ? `${Math.floor(a.avg_pace_s_per_km / 60)}:${String(a.avg_pace_s_per_km % 60).padStart(2, "0")}/km`
+          : "-";
+        return `  ${a.date}: ${a.name} | ${km}km | ${min}min | ${pace} | HR ${a.avg_hr}`;
+      }).join("\n")
+    : `Últimas corridas (datos Garmin export):
   2026-06-02: VO2 máximo | 5.6km | 30min | 5:26/km | HR 163
   2026-05-31: Base | 10.3km | 58min | 5:37/km | HR 164
-  2026-05-28: Tempo | 7.0km | 35min | 5:03/km | HR 167
-  2026-05-26: Base | 9.5km | 53min | 5:35/km | HR 161
-  2026-05-24: Base | 8.0km | 46min | 5:48/km | HR 154`;
-    sleepInfo = "Sueño anoche: 8.2h, score 89";
-  }
+  2026-05-28: Tempo | 7.0km | 35min | 5:03/km | HR 167`;
 
   const planContext = weekWorkouts.map((w) =>
-    `  ${w.date} (${["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"][new Date(w.date+"T00:00:00").getDay()]}): ${w.title} — ${w.distanceKm}km ${w.paceTarget || ""}`
+    `  ${["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"][new Date(w.date + "T00:00:00").getDay()]}: ${w.title} — ${w.distanceKm}km ${w.paceTarget || ""}`
   ).join("\n");
 
   return `CONTEXTO DEL DÍA (${today}):
-${hrvInfo}
-${sleepInfo}
-VO2max: 54 | FC máx: 201 | FC reposo: 45
+${hrvInfo} | ${sleepInfo}
+VO2max: 54 | FC máx: 201 | FC reposo: 45 bpm
 
 SEMANA ${currentWeek}/15 — ${weekWorkouts[0]?.phase || ""}:
 ${planContext}
 
 HOY: ${todayWorkout ? `${todayWorkout.title} — ${todayWorkout.details}` : "Día de descanso"}
 
-${recentActivities}
+${activityLines}
 
-PROBLEMA PRINCIPAL DETECTADO: Lucas tiende a correr sus salidas fáciles demasiado rápido (Z3/HR 154-164 en vez de Z2/HR <140). Reforzar este punto cuando sea relevante.`;
+NOTA CLAVE: Lucas tiende a correr salidas fáciles demasiado rápido (Z3/HR 154-164 en vez de Z2/HR <140). Recordárselo cuando sea relevante.`;
 }
 
-const BASE_SYSTEM = `Sos un entrenador personal de running y fitness para Lucas, 21 años, corredor de Buenos Aires.
+const SYSTEM_PROMPT = `Sos el coach de entrenamiento de PeakLab para Lucas, 21 años, corredor de Buenos Aires.
 
 PERFIL:
-- Objetivos: Media maratón 23 ago 2026 (meta 1:48-1:52) | Maratón 20 sep 2026 (meta 4:00-4:10)
-- Estructura: Gym PPL (lun/mié/vie) + Running 3x/sem (mar/jue/dom)
-- Sin sentadilla bilateral (molestia previa)
+- Gym PPL: Lunes (Push) / Miércoles (Pull) / Viernes (Piernas). Press banca 110kg×8, bulgarias 25kg×6/pierna.
+- Running: 3x/sem (martes/jueves/domingo). Objectives: Media 23 ago 2026 (meta 1:48-1:52) | Maratón 20 sep 2026 (meta 4:00-4:10).
+- Sin sentadilla bilateral.
 
-ZONAS FC:
-- Z2 easy: HR 121-140 (~6:30-7:00/km) — 80% del entrenamiento
-- Z4 umbral: HR 161-180 (~5:05-5:40/km)
-- Z5 VO2max: HR 181+ (~4:30-4:50/km)
-- HMP (ritmo media): 5:05-5:15/km | MP (ritmo maratón): 5:35-5:50/km
+ZONAS FC: Z2 easy HR 121-140 (~5:55-6:15/km) | Z4 umbral HR 161-180 (~5:05-5:20/km) | Z5 VO2max HR 181+ | HMP: 5:05-5:15/km | MP: 5:35-5:45/km
 
-ESTILO: Respondé en español rioplatense. Respuestas concisas y directas. Usá datos concretos cuando los tengas. Si el atleta dice que no pudo completar una sesión, preguntá qué pasó antes de ajustar el plan.`;
+ESTILO: Español rioplatense. Respuestas cortas y directas. Con datos concretos. Preguntá si necesitás más info antes de dar consejo.`;
 
 export async function POST(req: NextRequest) {
   try {
     const { messages } = await req.json();
     const apiKey = process.env.GEMINI_API_KEY;
 
-    if (!apiKey || apiKey.includes("your_")) {
+    if (!apiKey || apiKey.includes("your_") || apiKey.length < 10) {
       return NextResponse.json({
-        reply: "Para activar el chat, agregá tu GEMINI_API_KEY en .env.local. Obtenerla es gratis en aistudio.google.com.",
+        reply: "Para activar el chat necesitás agregar GEMINI_API_KEY en las env vars de Vercel. Obtenerla es gratis en aistudio.google.com.",
       });
     }
 
     const context = await buildContext();
-    const systemContent = `${BASE_SYSTEM}\n\n${context}`;
 
-    const geminiMessages = [
-      { role: "user", parts: [{ text: systemContent }] },
-      { role: "model", parts: [{ text: "Entendido. Soy tu coach, tengo el contexto de hoy. ¿En qué te puedo ayudar?" }] },
+    const contents = [
+      { role: "user", parts: [{ text: `${SYSTEM_PROMPT}\n\n${context}` }] },
+      { role: "model", parts: [{ text: "Entendido. Tengo el contexto de hoy. ¿En qué te puedo ayudar?" }] },
       ...messages.map((m: { role: string; content: string }) => ({
         role: m.role === "assistant" ? "model" : "user",
         parts: [{ text: m.content }],
       })),
     ];
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: geminiMessages,
-          generationConfig: { maxOutputTokens: 800, temperature: 0.7 },
-        }),
-      }
-    );
-
-    if (!res.ok) {
-      const err = await res.text();
-      console.error("Gemini error:", err);
-      return NextResponse.json({ reply: "Error al llamar a Gemini. Verificá la API key." });
-    }
-
-    const data = await res.json();
-    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sin respuesta.";
+    const reply = await callGemini(apiKey, contents);
     return NextResponse.json({ reply });
-  } catch (e) {
-    console.error(e);
-    return NextResponse.json({ reply: "Error interno." });
+
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("Chat error:", msg);
+    return NextResponse.json({
+      reply: `Error técnico: ${msg.slice(0, 100)}. Verificá que GEMINI_API_KEY esté correctamente configurada en Vercel.`,
+    });
   }
 }
