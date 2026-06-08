@@ -40,7 +40,7 @@ function nextGymDay(): string {
 const TYPE_COLORS: Record<string, string> = {
   Push:    "bg-blue-500/20 text-blue-300 border-blue-500/30",
   Pull:    "bg-green-500/20 text-green-300 border-green-500/30",
-  Piernas: "bg-orange-500/20 text-orange-300 border-orange-500/30",
+  Piernas: "bg-purple-500/20 text-purple-300 border-purple-500/30",
 };
 
 const PHASE_COLORS: Record<string, string> = {
@@ -62,7 +62,7 @@ function ExerciseRow({ ex }: { ex: GymExercise }) {
           {ex.sets}×{ex.reps}
         </span>
         {ex.weight && (
-          <span className="text-orange-400">{ex.weight}</span>
+          <span className="text-blue-400">{ex.weight}</span>
         )}
       </div>
     </div>
@@ -124,7 +124,7 @@ function TodayPlanCard({
           {/* Core finisher */}
           <div>
             <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
-              Core finisher <span className="text-orange-400 font-normal normal-case">(8-10 min — siempre)</span>
+              Core finisher <span className="text-blue-400 font-normal normal-case">(8-10 min — siempre)</span>
             </h3>
             <div>
               {gymDay.core.map((ex, i) => (
@@ -137,7 +137,7 @@ function TodayPlanCard({
           {gymDay.exercises.length > 0 && (
             <button
               onClick={() => onStartSession(gymDay)}
-              className="w-full py-2.5 bg-orange-500 hover:bg-orange-400 text-white font-semibold rounded-xl text-sm transition-colors"
+              className="w-full py-2.5 bg-blue-500 hover:bg-blue-400 text-white font-semibold rounded-xl text-sm transition-colors"
             >
               Empezar sesión
             </button>
@@ -246,7 +246,7 @@ export default function GymPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Gym</h1>
+      <h1 className="text-2xl font-black text-zinc-50">Gym</h1>
 
       {/* Today's plan — only shown on gym days */}
       {todayGymDay ? (
@@ -284,7 +284,7 @@ export default function GymPage() {
                   onClick={() => setForm((f) => ({ ...f, type: t }))}
                   className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${
                     form.type === t
-                      ? "bg-orange-500 text-white"
+                      ? "bg-blue-500 text-white"
                       : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
                   }`}
                 >
@@ -345,7 +345,7 @@ export default function GymPage() {
                   </div>
                 ))}
               </div>
-              <button onClick={() => addSet(ei)} className="text-xs text-orange-400 hover:text-orange-300 mt-1">
+              <button onClick={() => addSet(ei)} className="text-xs text-blue-400 hover:text-blue-300 mt-1">
                 + Serie
               </button>
             </div>
@@ -385,7 +385,7 @@ export default function GymPage() {
         <button
           onClick={save}
           disabled={saving}
-          className="w-full py-3 bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors"
+          className="w-full py-3 bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-white font-bold rounded-xl transition-colors"
         >
           {saving ? "Guardando..." : saved ? "✓ Guardado" : "Guardar sesión"}
         </button>
@@ -393,7 +393,7 @@ export default function GymPage() {
 
       {/* History */}
       <div>
-        <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">Historial</h2>
+        <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-3">Historial</h2>
         {loading ? (
           <p className="text-zinc-500 text-sm">Cargando...</p>
         ) : sessions.length === 0 ? (
@@ -412,9 +412,9 @@ export default function GymPage() {
 
 function SessionHistoryCard({ session }: { session: Session }) {
   const typeColors: Record<string, string> = {
-    Push: "bg-blue-500/20 text-blue-300",
-    Pull: "bg-green-500/20 text-green-300",
-    Piernas: "bg-orange-500/20 text-orange-300",
+    Push: "bg-blue-500/20 text-blue-300 border border-blue-500/20",
+    Pull: "bg-green-500/20 text-green-300 border border-green-500/20",
+    Piernas: "bg-purple-500/20 text-purple-300 border border-purple-500/20",
   };
   const totalSets = session.exercises.reduce((s, e) => s + e.sets.length, 0);
 

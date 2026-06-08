@@ -46,7 +46,7 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-140px)]">
-      <h1 className="text-2xl font-bold mb-4 flex-shrink-0">Coach IA</h1>
+      <h1 className="text-2xl font-black text-zinc-50 mb-4 flex-shrink-0">Coach IA</h1>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto space-y-3 mb-4">
@@ -79,7 +79,7 @@ export default function ChatPage() {
             <div
               className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
                 m.role === "user"
-                  ? "bg-orange-500 text-white"
+                  ? "bg-blue-500 text-white"
                   : "bg-zinc-900 border border-zinc-800 text-zinc-200"
               }`}
             >
@@ -107,12 +107,12 @@ export default function ChatPage() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
           placeholder="Preguntá algo..."
-          className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+          className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-blue-500/50"
         />
         <button
           onClick={() => send()}
           disabled={loading || !input.trim()}
-          className="px-4 py-3 bg-orange-500 hover:bg-orange-400 disabled:opacity-40 text-white rounded-xl font-medium text-sm transition-colors"
+          className="px-4 py-3 bg-blue-500 hover:bg-blue-400 disabled:opacity-40 text-white rounded-xl font-bold text-sm transition-colors"
         >
           Enviar
         </button>
