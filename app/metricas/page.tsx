@@ -51,40 +51,23 @@ export default async function MetricasPage() {
         )}
       </div>
 
-      {/* Stat boxes */}
+      {/* Trend cards — replace static StatBoxes */}
       <div className="grid grid-cols-2 gap-3">
-        <StatBox
-          icon="❤️"
-          label="FC Reposo"
-          value="45"
-          unit="bpm"
-          sub="nivel atlético"
-          color="text-lime-400"
-        />
-        <StatBox
-          icon="📈"
-          label="VO2max"
-          value="54"
-          unit=""
-          sub="Superior — Garmin"
-          color="text-green-400"
-        />
-        <StatBox
-          icon="🏃"
-          label="PR Media"
-          value="1:51:42"
-          unit=""
-          sub="24 ago 2025"
-          color="text-lime-400"
-        />
-        <StatBox
-          icon="🧠"
-          label="HRV hoy"
-          value={String(hrv)}
-          unit="ms"
-          sub={`${hrvPct}% del baseline`}
-          color="text-purple-400"
-        />
+        <TrendCard icon="📈" label="VO2max" value="54" delta="+1.2" period="vs nov 2025" direction="up" />
+        <TrendCard icon="🏃" label="Pred. Media" value="1:45" delta="-6min" period="vs ago 2025" direction="up" />
+        <TrendCard icon="💪" label="Volumen sem." value="27km" delta="+15%" period="vs mes ant." direction="up" />
+        <TrendCard icon="❤️" label="FC Reposo" value="45bpm" delta="-2bpm" period="vs oct 2025" direction="up" />
+      </div>
+
+      {/* Tendencias section */}
+      <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">TENDENCIAS</p>
+        <div className="space-y-3">
+          <TrendRow label="Forma física (CTL)" value="23" trend="↑ mejorando" color="lime" note="Build progresivo en los últimos 30 días" />
+          <TrendRow label="Fatiga (ATL)" value="18" trend="↓ bajando" color="lime" note="Buena recuperación esta semana" />
+          <TrendRow label="Predicción media" value="1:45:05" trend="↑ mejorando" color="lime" note="+3min vs PR actual (1:51:42)" />
+          <TrendRow label="Consistencia" value="73%" trend="→ estable" color="yellow" note="4/6 sesiones completadas esta semana" />
+        </div>
       </div>
 
       {/* Volume chart */}
@@ -224,32 +207,62 @@ export default async function MetricasPage() {
   );
 }
 
-function StatBox({
+function TrendCard({
   icon,
   label,
   value,
-  unit,
-  sub,
-  color,
+  delta,
+  period,
+  direction,
 }: {
   icon: string;
   label: string;
   value: string;
-  unit: string;
-  sub: string;
-  color: string;
+  delta: string;
+  period: string;
+  direction: "up" | "down";
 }) {
   return (
-    <div className="bg-[#0f1419] border border-[#1e2a35] rounded-xl p-3">
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <span className="text-base leading-none">{icon}</span>
-        <p className="text-slate-500 text-xs">{label}</p>
+    <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-lg">{icon}</span>
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+          direction === "up" ? "bg-lime-400/10 text-lime-400" : "bg-red-400/10 text-red-400"
+        }`}>
+          {direction === "up" ? "↑" : "↓"} {delta}
+        </span>
       </div>
-      <p className={`text-2xl font-extrabold leading-none ${color}`}>
-        {value}
-        {unit && <span className="text-sm font-normal ml-1 text-slate-500">{unit}</span>}
-      </p>
-      <p className="text-slate-500 text-xs mt-1">{sub}</p>
+      <p className="text-slate-400 text-xs">{label}</p>
+      <p className="text-slate-100 font-bold text-xl">{value}</p>
+      <p className="text-slate-600 text-xs mt-0.5">{period}</p>
+    </div>
+  );
+}
+
+function TrendRow({
+  label,
+  value,
+  trend,
+  color,
+  note,
+}: {
+  label: string;
+  value: string;
+  trend: string;
+  color: "lime" | "yellow" | "red";
+  note: string;
+}) {
+  const colors = { lime: "text-lime-400", yellow: "text-yellow-400", red: "text-red-400" };
+  return (
+    <div className="flex items-start justify-between">
+      <div className="flex-1">
+        <div className="flex items-center gap-2">
+          <p className="text-slate-200 text-sm font-medium">{label}</p>
+          <span className={`text-xs ${colors[color]}`}>{trend}</span>
+        </div>
+        <p className="text-slate-600 text-xs mt-0.5">{note}</p>
+      </div>
+      <p className="text-slate-100 font-bold text-sm ml-3">{value}</p>
     </div>
   );
 }

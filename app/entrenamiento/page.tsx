@@ -9,6 +9,53 @@ const ZONES = [
   { label: "Z5 VO2",    pace: "4:30-4:50/km", hr: "HR 181+"    },
 ];
 
+function getCoachTip(type: string, phase: string): string {
+  // Gym tips
+  if (type === "Push") {
+    return "Push day. Activá el manguito rotador antes del press. Si el primer set es pesado, hacé uno de calentamiento previo.";
+  }
+  if (type === "Pull") {
+    return "Pull day. Enfocate en el recorrido completo, especialmente la extensión superior en dominadas.";
+  }
+  if (type === "Piernas") {
+    return "Leg day. Los hip thrust son la prioridad para el running. Activá glúteos antes con 2 series livianas.";
+  }
+
+  // Running tips
+  if (type === "easy" || type === "recovery") {
+    return "Salida fácil. Si podés hablar sin esfuerzo, vas perfecto. HR < 140 es el objetivo.";
+  }
+  if (type === "quality") {
+    const phaseLower = phase.toLowerCase();
+    if (phaseLower.includes("tempo") || phaseLower.includes("umbral") || phaseLower.includes("ritmo maratón")) {
+      return "Tempo run. El ritmo tiene que sentirse 'cómodamente difícil' — podés decir palabras sueltas, no oraciones.";
+    }
+    return "Sesión de calidad. Calentá bien 10min antes de los esfuerzos. Cada serie debe sentirse al 90% de esfuerzo.";
+  }
+  if (type === "long") {
+    return "Long run. Ritmo conversacional todo el tiempo. Si necesitás bajar el ritmo en el km 10, es normal.";
+  }
+  if (type === "race") {
+    return "Día de carrera. Salí 10-15seg más lento que tu objetivo los primeros 5km. La energía llega después.";
+  }
+
+  return "Escuchá el cuerpo. El objetivo de hoy es ejecutar bien, no perfectamente.";
+}
+
+const LAST_SESSION_MAP: Record<string, string> = {
+  "Press banca": "110kg × 8 · hace 7 días",
+  "Bulgarian split squat": "25kg × 6 · hace 7 días",
+  "Hip thrust": "Primera vez",
+  "Remo con barra": "95kg × 8 · hace 7 días",
+  "Dominadas con peso": "BW × 10 · hace 7 días",
+};
+
+function getLastSession(name: string): string {
+  return LAST_SESSION_MAP[name] ?? "Sin registro previo";
+}
+
+const HAS_HISTORY = new Set(["Press banca", "Remo con barra"]);
+
 export default function EntrenamientoPage() {
   const today = new Date();
   const dow = today.getDay(); // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
@@ -35,6 +82,10 @@ export default function EntrenamientoPage() {
     3: "Miércoles", 4: "Jueves", 5: "Viernes", 6: "Sábado",
   };
 
+  // Determine coach tip context
+  const coachType = gymDay ? gymDay.type : (runWorkout ? runWorkout.type : "rest");
+  const coachPhase = gymDay ? gymDay.phase : (runWorkout ? runWorkout.title : "");
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -46,6 +97,19 @@ export default function EntrenamientoPage() {
           Entrenamiento de hoy
         </h1>
       </div>
+
+      {/* Coach tip del día — visible cuando hay entrenamiento */}
+      {(showGym || showRun) && (
+        <div className="bg-lime-400/5 border border-lime-400/20 rounded-xl p-3 mb-4">
+          <div className="flex items-start gap-2">
+            <span className="text-lime-400 text-sm mt-0.5">●</span>
+            <div>
+              <p className="text-lime-400 text-xs font-semibold uppercase tracking-wide mb-1">Coach</p>
+              <p className="text-slate-300 text-sm leading-relaxed">{getCoachTip(coachType, coachPhase)}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── GYM VIEW ── */}
       {showGym && gymDay && (
@@ -87,27 +151,32 @@ export default function EntrenamientoPage() {
               </p>
             </div>
             <div className="divide-y divide-[#1e2a35]">
-              {gymDay.exercises.map((ex, i) => (
-                <div key={ex.name} className="flex items-center gap-3 px-5 py-3.5">
-                  <span className="text-slate-600 text-sm font-bold w-5 text-right flex-shrink-0">
-                    {i + 1}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-slate-100 text-sm font-semibold leading-tight">{ex.name}</p>
-                    {ex.notes && (
-                      <p className="text-slate-500 text-xs mt-0.5 leading-snug">{ex.notes}</p>
-                    )}
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-slate-100 text-sm font-bold">
-                      {ex.sets} × {ex.reps}
+              {gymDay.exercises.map((ex, i) => {
+                const hasHistory = HAS_HISTORY.has(ex.name);
+                return (
+                  <div key={ex.name} className="px-5 py-3.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-500 text-xs w-5 text-center">{i + 1}</span>
+                        <p className="text-slate-100 font-medium text-sm">{ex.name}</p>
+                      </div>
+                      <p className="text-slate-500 text-xs">{ex.sets}×{ex.reps}</p>
+                    </div>
+                    {/* Última ejecución — estático por ahora, en futuro vendrá de Upstash */}
+                    <p className="text-xs text-slate-600 ml-7 mb-2">
+                      Última vez: {getLastSession(ex.name)} · Objetivo hoy: {ex.weight ?? "ver notas"}
                     </p>
-                    {ex.weight && (
-                      <p className="text-slate-500 text-xs mt-0.5">{ex.weight}</p>
+                    {hasHistory && (
+                      <span className="text-xs bg-blue-400/10 text-blue-400 px-2 py-0.5 rounded-full ml-7">
+                        ↑ Intentá +2.5kg hoy
+                      </span>
+                    )}
+                    {ex.notes && (
+                      <p className="text-slate-500 text-xs mt-1 ml-7 leading-snug">{ex.notes}</p>
                     )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

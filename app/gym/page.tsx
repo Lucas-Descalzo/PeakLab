@@ -50,6 +50,20 @@ const PHASE_COLORS: Record<string, string> = {
   Recovery:  "bg-red-500/20 text-red-300",
 };
 
+// ── PR detection ──────────────────────────────────────────────────────────────
+function detectPR(exerciseName: string, currentKg: number, sessions: Session[]): boolean {
+  if (currentKg <= 0) return false;
+  const historical = sessions
+    .flatMap(s => s.exercises)
+    .filter(e => e.name.toLowerCase() === exerciseName.toLowerCase())
+    .flatMap(e => e.sets)
+    .map(s => s.kg);
+
+  if (historical.length === 0) return false;
+  const prevMax = Math.max(...historical);
+  return currentKg > prevMax;
+}
+
 // ── CounterInput ──────────────────────────────────────────────────────────────
 function CounterInput({
   value,
@@ -196,6 +210,7 @@ function ExerciseForm({
   ex,
   ei,
   formType,
+  sessions,
   onUpdateName,
   onUpdateSet,
   onAddSet,
@@ -206,6 +221,7 @@ function ExerciseForm({
   ex: Exercise;
   ei: number;
   formType: string;
+  sessions: Session[];
   onUpdateName: (ei: number, name: string) => void;
   onUpdateSet: (ei: number, si: number, field: "kg" | "reps" | "rir" | "completed", value: string | boolean | number) => void;
   onAddSet: (ei: number) => void;
@@ -213,13 +229,19 @@ function ExerciseForm({
   onRemoveExercise: (ei: number) => void;
   showRemove: boolean;
 }) {
-  // default expanded = last set index
   const [expandedSet, setExpandedSet] = useState<number>(ex.sets.length - 1);
 
-  // when sets are added, expand the new last one
   useEffect(() => {
     setExpandedSet(ex.sets.length - 1);
   }, [ex.sets.length]);
+
+  // PR detection: max kg across all current sets for this exercise
+  const currentMaxKg = ex.sets.reduce((m, s) => s.kg > m ? s.kg : m, 0);
+  const isPR = ex.name.trim().length > 0 && detectPR(ex.name, currentMaxKg, sessions);
+
+  // Exercise completion feedback
+  const allSetsCompleted = ex.sets.length > 0 && ex.sets.every(s => s.completed);
+  const exerciseVolume = ex.sets.reduce((t, s) => t + s.kg * s.reps, 0);
 
   return (
     <div className="bg-[#080c10] border border-[#1e2a35] rounded-xl p-3 space-y-3">
@@ -242,6 +264,14 @@ function ExerciseForm({
           </button>
         )}
       </div>
+
+      {/* PR badge */}
+      {isPR && (
+        <div className="flex items-center gap-1 bg-yellow-400/10 border border-yellow-400/20 rounded-lg px-2 py-1">
+          <span className="text-yellow-400 text-sm">🏅</span>
+          <span className="text-yellow-400 text-xs font-semibold">¡Nuevo PR personal!</span>
+        </div>
+      )}
 
       {/* Suggestion chips */}
       <div className="flex flex-wrap gap-1.5">
@@ -376,6 +406,17 @@ function ExerciseForm({
       >
         + Serie
       </button>
+
+      {/* Exercise completion feedback */}
+      {allSetsCompleted && (
+        <div className="flex items-center gap-2 text-lime-400">
+          <span>✓</span>
+          <span className="text-xs font-medium">Ejercicio completado</span>
+          <span className="text-xs text-slate-500">
+            · {exerciseVolume.toLocaleString()}kg total
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -393,6 +434,7 @@ export default function GymPage() {
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [coachMessage, setCoachMessage] = useState("");
 
   const [todayGymDay, setTodayGymDay] = useState<GymDay | null>(null);
   useEffect(() => {
@@ -402,6 +444,13 @@ export default function GymPage() {
   useEffect(() => {
     fetchSessions().then((d) => { setSessions(d as Session[]); setLoading(false); });
   }, []);
+
+  // Session volume tracker (only completed sets)
+  const sessionVolume = form.exercises.reduce((total, ex) => {
+    return total + ex.sets.reduce((setTotal, s) => {
+      return setTotal + (s.completed ? s.kg * s.reps : 0);
+    }, 0);
+  }, 0);
 
   function handleStartSession(day: GymDay) {
     const allExercises = [...day.exercises, ...day.core];
@@ -482,10 +531,20 @@ export default function GymPage() {
 
   async function save() {
     setSaving(true);
+    setCoachMessage("");
     try {
       const result = await saveSession(form as Omit<StoredSession, "id">);
       setSessions((prev) => [result as Session, ...prev]);
       setSaved(true);
+
+      const messages = [
+        "Sesión registrada. Volumen sólido para un día de " + form.type + ".",
+        "Bien ejecutado. El cuerpo absorbe esta carga en las próximas 48h.",
+        "Registrado. El core al final marca la diferencia para el running.",
+        "Sesión completada. Recuperá bien antes de la próxima corrida.",
+      ];
+      setCoachMessage(messages[Math.floor(Math.random() * messages.length)]);
+
       setForm({ date: new Date().toISOString().split("T")[0], type: "Push", exercises: [emptyExercise()], duration_min: 70, notes: "" });
       setTimeout(() => setSaved(false), 3000);
     } finally {
@@ -511,6 +570,14 @@ export default function GymPage() {
       {/* Log form */}
       <div id="gym-log-form" className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4 space-y-4">
         <h2 className="font-semibold text-slate-200">Registrar sesión</h2>
+
+        {/* Session volume tracker */}
+        <div className="flex items-center justify-between bg-[#0f1419] border border-[#1e2a35] rounded-xl px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-slate-500 text-xs uppercase tracking-wide">Volumen sesión</span>
+          </div>
+          <span className="text-lime-400 font-bold">{sessionVolume.toLocaleString()}kg</span>
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -551,6 +618,7 @@ export default function GymPage() {
               ex={ex}
               ei={ei}
               formType={form.type}
+              sessions={sessions}
               onUpdateName={updateExerciseName}
               onUpdateSet={updateSet}
               onAddSet={addSet}
@@ -600,6 +668,14 @@ export default function GymPage() {
         >
           {saving ? "Guardando..." : saved ? "✓ Guardado" : "Guardar sesión"}
         </button>
+
+        {/* Coach message */}
+        {coachMessage && (
+          <div className="flex items-start gap-2 bg-lime-400/5 border border-lime-400/20 rounded-xl p-3">
+            <span className="text-lime-400 mt-0.5">●</span>
+            <p className="text-slate-300 text-sm">{coachMessage}</p>
+          </div>
+        )}
       </div>
 
       {/* History */}
@@ -611,8 +687,8 @@ export default function GymPage() {
           <p className="text-slate-500 text-sm">No hay sesiones registradas aún.</p>
         ) : (
           <div className="space-y-3">
-            {sessions.map((s) => (
-              <SessionHistoryCard key={s.id || s.date} session={s} />
+            {sessions.map((s, idx) => (
+              <SessionHistoryCard key={s.id || s.date} session={s} allSessions={sessions} sessionIndex={idx} />
             ))}
           </div>
         )}
@@ -621,13 +697,38 @@ export default function GymPage() {
   );
 }
 
-function SessionHistoryCard({ session }: { session: Session }) {
+function SessionHistoryCard({
+  session,
+  allSessions,
+  sessionIndex,
+}: {
+  session: Session;
+  allSessions: Session[];
+  sessionIndex: number;
+}) {
   const typeColors: Record<string, string> = {
     Push: "bg-lime-400/20 text-lime-300 border border-lime-400/20",
     Pull: "bg-green-500/20 text-green-300 border border-green-500/20",
     Piernas: "bg-purple-500/20 text-purple-300 border border-purple-500/20",
   };
   const totalSets = session.exercises.reduce((s, e) => s + e.sets.length, 0);
+
+  const totalVolume = session.exercises
+    .flatMap(e => e.sets)
+    .reduce((t, s) => t + s.kg * s.reps, 0);
+
+  // Find the previous session of the same type (sessions are ordered newest first, so look at higher indices)
+  const prevSameType = allSessions
+    .slice(sessionIndex + 1)
+    .find(s => s.type === session.type);
+
+  const prevVolume = prevSameType
+    ? prevSameType.exercises.flatMap(e => e.sets).reduce((t, s) => t + s.kg * s.reps, 0)
+    : null;
+
+  const volumeDelta = prevVolume !== null && prevVolume > 0
+    ? ((totalVolume / prevVolume - 1) * 100)
+    : null;
 
   return (
     <div className="bg-[#0f1419] border border-[#1e2a35] rounded-xl p-4">
@@ -637,8 +738,16 @@ function SessionHistoryCard({ session }: { session: Session }) {
             {session.type}
           </span>
           <span className="text-slate-400 text-sm">{session.date}</span>
+          {volumeDelta !== null && (
+            <span className={`text-xs font-medium ${volumeDelta >= 0 ? "text-lime-400" : "text-red-400"}`}>
+              {volumeDelta >= 0 ? "↑" : "↓"} {Math.abs(volumeDelta).toFixed(0)}% vs anterior
+            </span>
+          )}
         </div>
-        <span className="text-slate-500 text-xs">{session.duration_min}min · {totalSets} series</span>
+        <div className="flex items-center gap-2">
+          <span className="text-lime-400 text-xs font-medium">{totalVolume.toLocaleString()}kg</span>
+          <span className="text-slate-500 text-xs">{session.duration_min}min · {totalSets} series</span>
+        </div>
       </div>
       <div className="space-y-1">
         {session.exercises.map((ex, i) => {
