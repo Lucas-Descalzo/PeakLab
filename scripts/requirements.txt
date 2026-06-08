@@ -1,0 +1,3 @@
+garth
+requests
+python-dotenv
