@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
-import { fetchSessions, saveSession, exerciseHistory, GymSession as StoredSession } from "@/lib/gym-storage";
+import { fetchSessions, saveSession, GymSession as StoredSession } from "@/lib/gym-storage";
+import { getTodayGymDay, GymDay, GymExercise } from "@/lib/gym-plan";
 
 interface Set { kg: number; reps: number }
 interface Exercise { name: string; sets: Set[] }
@@ -16,13 +17,135 @@ interface Session {
 const GYM_TYPES = ["Push", "Pull", "Piernas"] as const;
 
 const SUGGESTED_EXERCISES: Record<string, string[]> = {
-  Push:    ["Press banca", "Press inclinado mancuernas", "Press militar", "Fondos con peso", "Elevaciones laterales", "Triceps polea"],
-  Pull:    ["Dominadas", "Remo con barra", "Remo en polea", "Face pull", "Curl bíceps", "Pullover"],
-  Piernas: ["Bulgarian split squat", "Hip thrust", "Prensa 45°", "Isquios máquina", "Abducción cadera", "Elevación talones (single leg)"],
+  Push:    ["Press banca", "Press inclinado mancuernas", "Press militar", "Fondos con peso", "Elevaciones laterales", "Tríceps polea"],
+  Pull:    ["Dominadas con peso", "Remo con barra", "Remo en polea", "Face pull", "Curl bíceps barra", "Remo a una mano"],
+  Piernas: ["Hip thrust", "Bulgarian split squat", "Prensa 45°", "Curl isquiotibiales acostado", "Abducción cadera máquina", "Elevación talones una pierna"],
 };
 
 function emptyExercise(): Exercise {
   return { name: "", sets: [{ kg: 0, reps: 0 }] };
+}
+
+function nextGymDay(): string {
+  const today = new Date().getDay(); // 0=Sun..6=Sat
+  const gymDays = [1, 3, 5]; // Mon, Wed, Fri
+  const dayNames = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+  for (let i = 1; i <= 7; i++) {
+    const next = (today + i) % 7;
+    if (gymDays.includes(next)) return dayNames[next];
+  }
+  return "Lunes";
+}
+
+const TYPE_COLORS: Record<string, string> = {
+  Push:    "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  Pull:    "bg-green-500/20 text-green-300 border-green-500/30",
+  Piernas: "bg-orange-500/20 text-orange-300 border-orange-500/30",
+};
+
+const PHASE_COLORS: Record<string, string> = {
+  Normal:    "bg-zinc-700/50 text-zinc-300",
+  Descarga:  "bg-yellow-500/20 text-yellow-300",
+  Taper:     "bg-purple-500/20 text-purple-300",
+  Recovery:  "bg-red-500/20 text-red-300",
+};
+
+function ExerciseRow({ ex }: { ex: GymExercise }) {
+  return (
+    <div className="flex items-center justify-between py-1.5 border-b border-zinc-800 last:border-0">
+      <div className="flex-1">
+        <span className="text-zinc-200 text-sm">{ex.name}</span>
+        {ex.notes && <span className="text-zinc-500 text-xs ml-2">({ex.notes})</span>}
+      </div>
+      <div className="flex items-center gap-2 text-xs text-zinc-400 shrink-0">
+        <span className="font-mono bg-zinc-800 px-2 py-0.5 rounded">
+          {ex.sets}×{ex.reps}
+        </span>
+        {ex.weight && (
+          <span className="text-orange-400">{ex.weight}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TodayPlanCard({
+  gymDay,
+  onStartSession,
+}: {
+  gymDay: GymDay;
+  onStartSession: (day: GymDay) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const typeColor = TYPE_COLORS[gymDay.type] || "bg-zinc-700/50 text-zinc-300";
+  const phaseColor = PHASE_COLORS[gymDay.phase] || "bg-zinc-700/50 text-zinc-300";
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
+      {/* Header */}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between p-4 hover:bg-zinc-800/40 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-zinc-200 font-semibold text-sm">Plan de hoy</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${typeColor}`}>
+            {gymDay.type}
+          </span>
+          {gymDay.phase !== "Normal" && (
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${phaseColor}`}>
+              {gymDay.phase}
+            </span>
+          )}
+        </div>
+        <span className="text-zinc-500 text-xs">{open ? "▲ ocultar" : "▼ ver"}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 space-y-4">
+          {/* Exercises */}
+          {gymDay.exercises.length > 0 ? (
+            <div>
+              <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+                Ejercicios
+              </h3>
+              <div>
+                {gymDay.exercises.map((ex, i) => (
+                  <ExerciseRow key={i} ex={ex} />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-zinc-500 text-sm italic">
+              Sesión de piernas omitida (semana de recuperación post-carrera).
+            </p>
+          )}
+
+          {/* Core finisher */}
+          <div>
+            <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+              Core finisher <span className="text-orange-400 font-normal normal-case">(8-10 min — siempre)</span>
+            </h3>
+            <div>
+              {gymDay.core.map((ex, i) => (
+                <ExerciseRow key={i} ex={ex} />
+              ))}
+            </div>
+          </div>
+
+          {/* Start session button */}
+          {gymDay.exercises.length > 0 && (
+            <button
+              onClick={() => onStartSession(gymDay)}
+              className="w-full py-2.5 bg-orange-500 hover:bg-orange-400 text-white font-semibold rounded-xl text-sm transition-colors"
+            >
+              Empezar sesión
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function GymPage() {
@@ -32,15 +155,39 @@ export default function GymPage() {
     date: new Date().toISOString().split("T")[0],
     type: "Push",
     exercises: [emptyExercise()],
-    duration_min: 60,
+    duration_min: 70,
     notes: "",
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // Compute today's gym day (client-side only to avoid hydration mismatch)
+  const [todayGymDay, setTodayGymDay] = useState<GymDay | null>(null);
+  useEffect(() => {
+    setTodayGymDay(getTodayGymDay());
+  }, []);
+
   useEffect(() => {
     fetchSessions().then((d) => { setSessions(d as Session[]); setLoading(false); });
   }, []);
+
+  function handleStartSession(day: GymDay) {
+    // Pre-fill form: type, and exercises with name + N empty sets
+    const allExercises = [...day.exercises, ...day.core];
+    const filledExercises: Exercise[] = allExercises.map((ex) => ({
+      name: ex.name,
+      sets: Array.from({ length: ex.sets }, () => ({ kg: 0, reps: 0 })),
+    }));
+    setForm((f) => ({
+      ...f,
+      type: day.type,
+      exercises: filledExercises.length > 0 ? filledExercises : [emptyExercise()],
+    }));
+    // Scroll to form
+    setTimeout(() => {
+      document.getElementById("gym-log-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  }
 
   function addExercise() {
     setForm((f) => ({ ...f, exercises: [...f.exercises, emptyExercise()] }));
@@ -90,7 +237,7 @@ export default function GymPage() {
       const result = await saveSession(form as Omit<StoredSession, "id">);
       setSessions((prev) => [result as Session, ...prev]);
       setSaved(true);
-      setForm({ date: new Date().toISOString().split("T")[0], type: "Push", exercises: [emptyExercise()], duration_min: 60, notes: "" });
+      setForm({ date: new Date().toISOString().split("T")[0], type: "Push", exercises: [emptyExercise()], duration_min: 70, notes: "" });
       setTimeout(() => setSaved(false), 3000);
     } finally {
       setSaving(false);
@@ -101,8 +248,20 @@ export default function GymPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Gym</h1>
 
+      {/* Today's plan — only shown on gym days */}
+      {todayGymDay ? (
+        <TodayPlanCard gymDay={todayGymDay} onStartSession={handleStartSession} />
+      ) : (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between">
+          <span className="text-zinc-500 text-sm">No hay sesión de gym hoy.</span>
+          <span className="text-zinc-500 text-sm">
+            Próxima sesión: <span className="text-zinc-300 font-medium">{nextGymDay()}</span>
+          </span>
+        </div>
+      )}
+
       {/* Log form */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-4">
+      <div id="gym-log-form" className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-4">
         <h2 className="font-semibold text-zinc-200">Registrar sesión</h2>
 
         {/* Date + Type */}
