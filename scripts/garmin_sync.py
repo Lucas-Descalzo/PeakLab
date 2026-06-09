@@ -132,6 +132,26 @@ def login():
 
 _post_ok = 0
 _post_fail = 0
+_garmin_errors = 0
+_display_name: "str | None" = None
+
+
+def get_display_name() -> str:
+    """Obtiene el displayName del usuario de Garmin (se cachea tras la primera llamada)."""
+    global _display_name
+    if _display_name is not None:
+        return _display_name
+    try:
+        profile = garth.connectapi("/userprofile-service/userprofile/personal-information")
+        _display_name = (profile or {}).get("displayName", "")
+        if _display_name:
+            print(f"  Display name: {_display_name}")
+        else:
+            print("  ⚠ displayName vacío en perfil de Garmin.")
+    except Exception as e:
+        print(f"  ⚠ No se pudo obtener displayName: {e}")
+        _display_name = ""
+    return _display_name
 
 def post(endpoint: str, data: dict) -> bool:
     global _post_ok, _post_fail
@@ -157,8 +177,10 @@ def post(endpoint: str, data: dict) -> bool:
 
 
 def sync_wellness(day: date):
+    global _garmin_errors
     day_str = day.isoformat()
     data = {"date": day_str}
+    display_name = get_display_name()
 
     try:
         hrv_data = garmin_api_call(f"/hrv-service/hrv/{day_str}")
@@ -170,9 +192,16 @@ def sync_wellness(day: date):
             data["hrv_status"] = s.get("status")
     except Exception as e:
         print(f"  HRV error: {e}")
+        _garmin_errors += 1
 
     try:
-        sleep_data = garmin_api_call(f"/wellness-service/wellness/dailySleepData/{day_str}")
+        # Garmin requiere displayName en el path; sin él devuelve 400
+        sleep_path = (
+            f"/wellness-service/wellness/dailySleepData/{display_name}/{day_str}"
+            if display_name else
+            f"/wellness-service/wellness/dailySleepData/{day_str}"
+        )
+        sleep_data = garmin_api_call(sleep_path)
         if sleep_data:
             dto = sleep_data.get("dailySleepDTO") or sleep_data
             if isinstance(dto, dict):
@@ -195,13 +224,21 @@ def sync_wellness(day: date):
                     )
     except Exception as e:
         print(f"  Sleep error: {e}")
+        _garmin_errors += 1
 
     try:
-        hr_data = garmin_api_call(f"/wellness-service/wellness/dailyHeartRate/{day_str}")
+        # Garmin requiere displayName en el path; sin él devuelve 403
+        hr_path = (
+            f"/wellness-service/wellness/dailyHeartRate/{display_name}/{day_str}"
+            if display_name else
+            f"/wellness-service/wellness/dailyHeartRate/{day_str}"
+        )
+        hr_data = garmin_api_call(hr_path)
         if hr_data:
             data["resting_hr"] = hr_data.get("restingHeartRate")
     except Exception as e:
         print(f"  HR error: {e}")
+        _garmin_errors += 1
 
     ok = post("/api/sync/wellness", data)
     hrv_val = data.get("hrv", "–")
@@ -385,10 +422,13 @@ def main():
     except Exception:
         pass
 
-    print(f"\n✅ Sync completo. Enviados: {_post_ok} OK, {_post_fail} fallos.")
+    print(f"\n✅ Sync completo. Enviados: {_post_ok} OK, {_post_fail} fallos. Errores Garmin: {_garmin_errors}.")
     if _post_fail > 0 and _post_ok == 0:
-        print("❌ Todos los requests fallaron. Revisá APP_URL y SYNC_SECRET.")
+        print("❌ Todos los requests a la app fallaron. Revisá APP_URL, SYNC_SECRET y UPSTASH_REDIS_REST_URL en Vercel.")
         sys.exit(1)
+    if _garmin_errors > 0:
+        print(f"⚠ {_garmin_errors} error/s al obtener datos de Garmin — algunos campos de wellness pueden estar vacíos.")
+        sys.exit(2)
 
 
 if __name__ == "__main__":
