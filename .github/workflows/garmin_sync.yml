@@ -15,8 +15,8 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    # 90 min: suficiente para 3 reintentos de login con backoff (2+5+10 min)
-    timeout-minutes: 90
+    # 15 min: con tokens pre-cargados no hay login, no hay backoff
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -32,8 +32,21 @@ jobs:
       - name: Install dependencies
         run: pip install -r scripts/requirements.txt
 
-      # Cache de tokens Garmin: evita hacer login en cada run
-      - name: Restore Garmin tokens
+      # Prioridad 1: tokens pre-generados localmente (base64 en secret)
+      # Esto evita el login con usuario/contraseña por completo.
+      # Ver README del workflow para cómo generar GARMIN_TOKENS_B64.
+      - name: Seed Garmin tokens from secret
+        if: ${{ secrets.GARMIN_TOKENS_B64 != '' }}
+        env:
+          GARMIN_TOKENS_B64: ${{ secrets.GARMIN_TOKENS_B64 }}
+        run: |
+          mkdir -p ~/.garmin_tokens
+          echo "$GARMIN_TOKENS_B64" | base64 -d | tar xz -C ~/.garmin_tokens
+          echo "✓ Tokens restaurados desde secret GARMIN_TOKENS_B64"
+
+      # Prioridad 2: cache de runs anteriores (cuando ya hubo un login exitoso)
+      - name: Restore Garmin tokens from cache
+        if: ${{ secrets.GARMIN_TOKENS_B64 == '' }}
         uses: actions/cache@v4
         with:
           path: ~/.garmin_tokens
@@ -51,9 +64,8 @@ jobs:
           echo "Sincronizando $DAYS días..."
           python scripts/garmin_sync.py $DAYS
 
-      # Guardar tokens aunque el step anterior haya fallado,
-      # para que el próximo run los reutilice y evite el SSO
-      - name: Save Garmin tokens
+      # Guardar tokens aunque el step anterior haya fallado
+      - name: Save Garmin tokens to cache
         if: always()
         uses: actions/cache/save@v4
         with:
