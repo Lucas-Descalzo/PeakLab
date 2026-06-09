@@ -44,15 +44,15 @@ export interface ActivityEntry {
 }
 
 function isConfigured(): boolean {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const url = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
   return !!(url && !url.includes("your_") && url.startsWith("http"));
 }
 
 async function redis() {
   const { Redis } = await import("@upstash/redis");
   return new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL!,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+    url: (process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL)!,
+    token: (process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN)!,
   });
 }
 
