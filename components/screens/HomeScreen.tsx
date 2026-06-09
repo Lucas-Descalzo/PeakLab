@@ -13,6 +13,9 @@ interface DailyBrief {
   focus: string
   action: string
   color: string
+  hrv: number
+  sleep_h: number
+  tsb: number
 }
 
 interface HomeScreenProps {
@@ -204,9 +207,24 @@ export default function HomeScreen({ todayWorkout, currentWeek }: HomeScreenProp
       {/* Micro stats */}
       <div className="grid grid-cols-3 gap-2.5">
         {[
-          { icon: <Heart size={15} className="text-slate-500" />, label: "HRV", value: "77ms", delta: "+4ms" },
-          { icon: <Moon size={15} className="text-slate-500" />, label: "Sueño", value: "8.2h", delta: "+0.4h" },
-          { icon: <Activity size={15} className="text-slate-500" />, label: "TSB", value: "+5", delta: "Fresco" },
+          {
+            icon: <Heart size={15} className="text-slate-500" />,
+            label: "HRV",
+            value: brief ? `${brief.hrv}ms` : "—",
+            delta: brief ? (brief.hrv >= 70 ? "Óptimo" : brief.hrv >= 55 ? "Normal" : "Bajo") : "...",
+          },
+          {
+            icon: <Moon size={15} className="text-slate-500" />,
+            label: "Sueño",
+            value: brief ? `${brief.sleep_h}h` : "—",
+            delta: brief ? (brief.sleep_h >= 7.5 ? "Bueno" : brief.sleep_h >= 6 ? "Regular" : "Poco") : "...",
+          },
+          {
+            icon: <Activity size={15} className="text-slate-500" />,
+            label: "TSB",
+            value: brief ? `${brief.tsb > 0 ? "+" : ""}${brief.tsb}` : "—",
+            delta: brief ? (brief.tsb > 5 ? "Fresco" : brief.tsb > -10 ? "Neutro" : "Cargado") : "...",
+          },
         ].map(m => (
           <div key={m.label} className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-3.5">
             {m.icon}

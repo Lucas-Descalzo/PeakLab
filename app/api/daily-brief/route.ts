@@ -39,11 +39,10 @@ export async function GET() {
   let redis: any = null
   try {
     const { Redis } = await import("@upstash/redis")
-    if (process.env.UPSTASH_REDIS_REST_URL?.startsWith("http")) {
-      redis = new Redis({
-        url: process.env.UPSTASH_REDIS_REST_URL!,
-        token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-      })
+    const redisUrl = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL
+    const redisToken = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN
+    if (redisUrl?.startsWith("http")) {
+      redis = new Redis({ url: redisUrl, token: redisToken! })
       const cached = await redis.get(`daily-brief:${today}`)
       if (cached) return NextResponse.json({ ...JSON.parse(cached as string), cached: true })
     }
@@ -100,7 +99,15 @@ export async function GET() {
   ])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let result: any = { ...ruleBased(readiness.score, todayWorkout?.title ?? "Seguí el plan"), score: readiness.score, status: readiness.label, color: readiness.color }
+  let result: any = {
+    ...ruleBased(readiness.score, todayWorkout?.title ?? "Seguí el plan"),
+    score: readiness.score,
+    status: readiness.label,
+    color: readiness.color,
+    hrv: wellnessData.hrv,
+    sleep_h: parseFloat((wellnessData.sleep_total_s / 3600).toFixed(1)),
+    tsb: parseFloat(load.tsb.toFixed(1)),
+  }
 
   // Try Gemini
   const apiKey = process.env.GEMINI_API_KEY

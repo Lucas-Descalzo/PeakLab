@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { getRecentActivities, getLatestWellness } from "@/lib/db"
 import ProgressScreen from "@/components/screens/ProgressScreen"
 import TrainingLoadChart from "@/components/TrainingLoadChart"
