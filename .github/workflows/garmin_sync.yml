@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     # 15 min: con tokens pre-cargados no hay login, no hay backoff
     timeout-minutes: 15
+    env:
+      GARMIN_TOKENS_B64: ${{ secrets.GARMIN_TOKENS_B64 }}
 
     steps:
       - name: Checkout
@@ -36,9 +38,7 @@ jobs:
       # Esto evita el login con usuario/contraseña por completo.
       # Ver README del workflow para cómo generar GARMIN_TOKENS_B64.
       - name: Seed Garmin tokens from secret
-        if: ${{ secrets.GARMIN_TOKENS_B64 != '' }}
-        env:
-          GARMIN_TOKENS_B64: ${{ secrets.GARMIN_TOKENS_B64 }}
+        if: ${{ env.GARMIN_TOKENS_B64 != '' }}
         run: |
           mkdir -p ~/.garmin_tokens
           echo "$GARMIN_TOKENS_B64" | base64 -d | tar xz -C ~/.garmin_tokens
@@ -46,7 +46,7 @@ jobs:
 
       # Prioridad 2: cache de runs anteriores (cuando ya hubo un login exitoso)
       - name: Restore Garmin tokens from cache
-        if: ${{ secrets.GARMIN_TOKENS_B64 == '' }}
+        if: ${{ env.GARMIN_TOKENS_B64 == '' }}
         uses: actions/cache@v4
         with:
           path: ~/.garmin_tokens
