@@ -14,7 +14,7 @@ const links = [
 export default function Nav() {
   const pathname = usePathname();
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 nav-backdrop border-t border-zinc-800/60">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-[#080c10] border-t border-zinc-800/60">
       <div className="max-w-4xl mx-auto flex justify-around">
         {links.map(({ href, label, Icon }) => {
           const active = pathname === href;

@@ -2,8 +2,9 @@ name: Garmin Daily Sync
 
 on:
   schedule:
-    # Todos los días a las 08:00 UTC = 05:00 AM Argentina (UTC-3)
-    - cron: '0 8 * * *'
+    # Todos los días a las 12:00 UTC = 09:00 AM Argentina (UTC-3)
+    # A las 9am el sueño ya está procesado en Garmin Connect
+    - cron: '0 12 * * *'
   workflow_dispatch:
     inputs:
       days:

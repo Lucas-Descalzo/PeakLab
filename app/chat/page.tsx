@@ -1,5 +1,17 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Fragment } from "react";
+
+function renderText(text: string) {
+  // Split on **bold** and *italic* patterns, render as React elements
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**"))
+      return <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong>;
+    if (part.startsWith("*") && part.endsWith("*"))
+      return <em key={i}>{part.slice(1, -1)}</em>;
+    return <Fragment key={i}>{part}</Fragment>;
+  });
+}
 
 interface Message { role: "user" | "assistant"; content: string }
 
@@ -158,7 +170,13 @@ export default function ChatPage() {
                   : "bg-[#0f1419] border border-[#1e2a35] text-slate-200 rounded-bl-sm"
               }`}
             >
-              {m.content || (
+              {m.content ? (
+                m.role === "assistant"
+                  ? m.content.split("\n").map((line, li) => (
+                      <span key={li} className="block">{renderText(line)}</span>
+                    ))
+                  : m.content
+              ) : (
                 <span className="text-slate-400">
                   Pensando<span className="animate-pulse">...</span>
                 </span>
