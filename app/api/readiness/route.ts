@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { calcReadiness, calcTrainingLoad } from "@/lib/training-readiness";
+import { calcReadiness, calcTrainingLoad, calcACWR, calcTrainingStatus } from "@/lib/training-readiness";
 import { getLatestWellness, getRecentActivities } from "@/lib/db";
 
 export async function GET() {
@@ -13,13 +13,28 @@ export async function GET() {
     distance_m: a.distance_m,
   }));
 
-  const load = calcTrainingLoad(activityData.length > 0 ? activityData : [
+  const STATIC = [
     { date: "2026-06-02", duration_s: 1812, avg_hr: 163, distance_m: 5554 },
     { date: "2026-05-31", duration_s: 3486, avg_hr: 164, distance_m: 10324 },
     { date: "2026-05-28", duration_s: 2106, avg_hr: 167, distance_m: 6951 },
     { date: "2026-05-26", duration_s: 3187, avg_hr: 161, distance_m: 9500 },
     { date: "2026-05-24", duration_s: 2767, avg_hr: 154, distance_m: 7951 },
-  ]);
+  ];
+
+  const data = activityData.length > 0 ? activityData : STATIC;
+
+  const load = calcTrainingLoad(data);
+  const acwr = calcACWR(data);
+
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const fourteenDaysAgo = new Date();
+  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+  const sevenDaysAgoStr = sevenDaysAgo.toISOString().split("T")[0];
+  const fourteenDaysAgoStr = fourteenDaysAgo.toISOString().split("T")[0];
+  const recentLoad = data.filter((a) => a.date >= sevenDaysAgoStr).reduce((s, a) => s + a.duration_s / 60, 0);
+  const previousLoad = data.filter((a) => a.date >= fourteenDaysAgoStr && a.date < sevenDaysAgoStr).reduce((s, a) => s + a.duration_s / 60, 0);
+  const training_status = calcTrainingStatus(acwr, recentLoad, previousLoad);
 
   const wellnessData = {
     date: wellness?.date ?? "2026-06-06",
@@ -31,5 +46,5 @@ export async function GET() {
   };
 
   const readiness = calcReadiness(wellnessData, load);
-  return NextResponse.json({ ...readiness, hrv: wellnessData.hrv });
+  return NextResponse.json({ ...readiness, hrv: wellnessData.hrv, acwr, training_status });
 }

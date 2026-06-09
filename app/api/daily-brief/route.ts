@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getLatestWellness, getRecentActivities } from "@/lib/db"
 import { getTodayWorkout } from "@/lib/training-plan"
-import { calcTrainingLoad, calcReadiness } from "@/lib/training-readiness"
+import { calcTrainingLoad, calcReadiness, calcACWR, calcTrainingStatus, calcLoadFocus, calcHRVTrend } from "@/lib/training-readiness"
 
 function midnightTimestamp(): number {
   const now = new Date()
@@ -64,7 +64,22 @@ export async function GET() {
     { date: "2026-05-28", duration_s: 2106, avg_hr: 167, distance_m: 6951 },
   ]
 
-  const load = calcTrainingLoad(activityData.length > 0 ? activityData : STATIC)
+  const data = activityData.length > 0 ? activityData : STATIC
+  const load = calcTrainingLoad(data)
+
+  const acwr = calcACWR(data)
+  const load_focus = calcLoadFocus(data)
+
+  const sevenDaysAgo = new Date()
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+  const fourteenDaysAgo = new Date()
+  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
+  const sevenDaysAgoStr = sevenDaysAgo.toISOString().split("T")[0]
+  const fourteenDaysAgoStr = fourteenDaysAgo.toISOString().split("T")[0]
+  const recentLoad = data.filter((a) => a.date >= sevenDaysAgoStr).reduce((s, a) => s + a.duration_s / 60, 0)
+  const previousLoad = data.filter((a) => a.date >= fourteenDaysAgoStr && a.date < sevenDaysAgoStr).reduce((s, a) => s + a.duration_s / 60, 0)
+  const training_status = calcTrainingStatus(acwr, recentLoad, previousLoad)
+
   const wellnessData = {
     date: wellness?.date ?? today,
     hrv: wellness?.hrv ?? 77,
@@ -74,6 +89,15 @@ export async function GET() {
     sleep_score: wellness?.sleep_score ?? 89,
   }
   const readiness = calcReadiness(wellnessData, load)
+
+  const hrv_trend = calcHRVTrend([
+    {
+      date: wellnessData.date,
+      hrv: wellnessData.hrv,
+      hrv_baseline_lower: wellnessData.hrv_baseline_lower,
+      hrv_baseline_upper: wellnessData.hrv_baseline_upper,
+    },
+  ])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let result: any = { ...ruleBased(readiness.score, todayWorkout?.title ?? "Seguí el plan"), score: readiness.score, status: readiness.label, color: readiness.color }
@@ -86,6 +110,10 @@ export async function GET() {
       const sleep = (wellnessData.sleep_total_s / 3600).toFixed(1)
       const prompt = `Sos el coach de PeakLab para Lucas (21 años, corredor de Buenos Aires).
 DATOS: HRV ${hrv}ms, Sueño ${sleep}h, Readiness ${readiness.score}/100, TSB ${load.tsb.toFixed(1)}.
+TRAINING STATUS: ${training_status.label} (${training_status.description})
+ACWR: ${acwr.acwr.toFixed(2)} — ${acwr.label}
+LOAD FOCUS: ${load_focus.deficit_label} — ${load_focus.recommendation}
+HRV TREND (7d): ${hrv_trend.trend_label}
 HOY: ${todayWorkout?.title ?? "Sin workout"} — ${todayWorkout?.details?.slice(0, 80) ?? ""}.
 Respondé SOLO con JSON sin markdown:
 {"recommendation":"max 20 palabras sobre qué hacer hoy","why":"max 20 palabras explicando por qué","focus":"2-3 palabras objetivo clave","action":"max 12 palabras acción concreta"}`

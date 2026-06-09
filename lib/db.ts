@@ -16,6 +16,7 @@ export interface WellnessEntry {
   sleep_rem_s?: number;
   sleep_score?: number;
   resting_hr?: number;
+  recovery_time_s?: number;
 }
 
 export interface ActivityEntry {
@@ -31,6 +32,15 @@ export interface ActivityEntry {
   max_hr?: number;
   avg_pace_s_per_km?: number;
   training_effect?: number;
+  zone_1_s?: number;
+  zone_2_s?: number;
+  zone_3_s?: number;
+  zone_4_s?: number;
+  zone_5_s?: number;
+  aerobic_te?: number;
+  anaerobic_te?: number;
+  recovery_time_s?: number;
+  trimp?: number;
 }
 
 function isConfigured(): boolean {

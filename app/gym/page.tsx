@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { fetchSessions, saveSession, GymSession as StoredSession } from "@/lib/gym-storage";
 import { getTodayGymDay, GymDay, GymExercise } from "@/lib/gym-plan";
+import WorkoutSession from "@/components/screens/WorkoutSession";
 
 interface Set { kg: number; reps: number; rir?: number; completed?: boolean }
 interface Exercise { name: string; sets: Set[] }
@@ -437,6 +438,9 @@ export default function GymPage() {
   const [coachMessage, setCoachMessage] = useState("");
 
   const [todayGymDay, setTodayGymDay] = useState<GymDay | null>(null);
+  const [activeSession, setActiveSession] = useState(false);
+  const [sessionGymDay, setSessionGymDay] = useState<GymDay | null>(null);
+
   useEffect(() => {
     setTodayGymDay(getTodayGymDay());
   }, []);
@@ -453,19 +457,25 @@ export default function GymPage() {
   }, 0);
 
   function handleStartSession(day: GymDay) {
-    const allExercises = [...day.exercises, ...day.core];
-    const filledExercises: Exercise[] = allExercises.map((ex) => ({
+    setSessionGymDay(day);
+    setActiveSession(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function handleSessionFinish(completed: {
+    type: "Push" | "Pull" | "Piernas";
+    exercises: { name: string; sets: { kg: number; reps: number; rir: number; done: boolean }[] }[];
+    duration_min: number;
+  }) {
+    const exercises: Exercise[] = completed.exercises.map(ex => ({
       name: ex.name,
-      sets: Array.from({ length: ex.sets }, () => ({ kg: 0, reps: 0, rir: undefined, completed: false })),
+      sets: ex.sets.map(s => ({ kg: s.kg, reps: s.reps, rir: s.rir, completed: s.done })),
     }));
-    setForm((f) => ({
-      ...f,
-      type: day.type,
-      exercises: filledExercises.length > 0 ? filledExercises : [emptyExercise()],
-    }));
+    setForm(f => ({ ...f, type: completed.type, exercises, duration_min: completed.duration_min }));
+    setActiveSession(false);
     setTimeout(() => {
       document.getElementById("gym-log-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 50);
+    }, 100);
   }
 
   function addExercise() {
@@ -556,7 +566,16 @@ export default function GymPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-black text-slate-100">Gym</h1>
 
-      {todayGymDay ? (
+      {/* Active session tracker */}
+      {activeSession && sessionGymDay && (
+        <WorkoutSession
+          gymDay={sessionGymDay}
+          onFinish={handleSessionFinish}
+          onClose={() => setActiveSession(false)}
+        />
+      )}
+
+      {!activeSession && (todayGymDay ? (
         <TodayPlanCard gymDay={todayGymDay} onStartSession={handleStartSession} />
       ) : (
         <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4 flex items-center justify-between">
@@ -565,10 +584,10 @@ export default function GymPage() {
             Próxima sesión: <span className="text-slate-300 font-medium">{nextGymDay()}</span>
           </span>
         </div>
-      )}
+      ))}
 
-      {/* Log form */}
-      <div id="gym-log-form" className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4 space-y-4">
+      {/* Log form — hidden while session is active */}
+      <div id="gym-log-form" className={`bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4 space-y-4 ${activeSession ? "hidden" : ""}`}>
         <h2 className="font-semibold text-slate-200">Registrar sesión</h2>
 
         {/* Session volume tracker */}

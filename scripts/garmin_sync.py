@@ -186,6 +186,55 @@ def sync_wellness(day: date):
     print(f"  {'✓' if ok else '✗'} Wellness {day_str}: HRV {hrv_val}ms | Sueño {sleep_h}h")
 
 
+def fetch_hr_zones(activity_id: int) -> dict:
+    """Fetch HR time in zones for an activity."""
+    try:
+        data = garmin_api_call(
+            f"/activity-service/activity/{activity_id}/hrTimeInZones"
+        )
+        if not data:
+            return {}
+        zones = {}
+        zone_list = (
+            data.get("userHrTimeInZones")
+            or data.get("allMetrics", {}).get("metricsMap", {}).get("HEART_RATE_ZONES", [])
+        )
+        for z in (zone_list or []):
+            if isinstance(z, dict):
+                zone_num = z.get("zoneNumber", z.get("secsInZone"))
+                secs = z.get("secsInZone", 0)
+                if isinstance(zone_num, int) and 1 <= zone_num <= 5:
+                    zones[f"zone_{zone_num}_s"] = int(secs)
+        return zones
+    except Exception as e:
+        print(f"    HR zones error: {e}")
+        return {}
+
+
+def fetch_recovery_time() -> "int | None":
+    """Get current recovery time advisor from Garmin Connect."""
+    try:
+        for endpoint in [
+            "/wellness-service/wellness/recoveryTime",
+            f"/wellness-service/wellness/recoveryAdvisor/{date.today().isoformat()}",
+        ]:
+            try:
+                data = garmin_api_call(endpoint)
+                if data:
+                    rt = (
+                        data.get("recoveryTimeSeconds")
+                        or (data.get("recoveryTime", 0) or 0) * 3600
+                        or (data.get("value", 0) or 0) * 3600
+                    )
+                    if rt and rt > 0:
+                        return int(rt)
+            except Exception:
+                continue
+        return None
+    except Exception:
+        return None
+
+
 def sync_activities(days_back: int):
     start_str = (date.today() - timedelta(days=days_back)).isoformat()
     try:
@@ -203,10 +252,23 @@ def sync_activities(days_back: int):
             type_key = act.get("activityType", {}).get("typeKey", "")
             if type_key not in running_types:
                 continue
+
+            # Fetch HR zones and enrich activity payload
+            activity_id = act.get("activityId", 0)
+            if activity_id:
+                hr_zones = fetch_hr_zones(activity_id)
+                act.update(hr_zones)
+                time.sleep(0.5)  # pausa para no triggear rate limit
+
             ok = post("/api/sync/activity", act)
             name = act.get("activityName", "Run")
             dist_km = round(act.get("distance", 0) / 100000, 1)
-            print(f"  {'✓' if ok else '✗'} {name} — {dist_km}km")
+            zones_info = ", ".join(
+                f"Z{i}:{act.get(f'zone_{i}_s', 0)//60}m"
+                for i in range(1, 6)
+                if act.get(f"zone_{i}_s")
+            )
+            print(f"  {'✓' if ok else '✗'} {name} — {dist_km}km{(' | ' + zones_info) if zones_info else ''}")
             count += 1
             time.sleep(0.5)  # pequeña pausa entre actividades
         if count == 0:
@@ -258,6 +320,18 @@ def main():
     else:
         print(f"\n📦 Sync largo ({days} días) — procesando en tandas de {CHUNK_SIZE}...")
         sync_in_chunks(days)
+
+    print("\n⏰ Obteniendo tiempo de recuperación...")
+    recovery_s = fetch_recovery_time()
+    if recovery_s:
+        recovery_h = recovery_s / 3600
+        print(f"  Recovery time: {recovery_h:.1f}h")
+        post("/api/sync/wellness", {
+            "date": date.today().isoformat(),
+            "recovery_time_s": recovery_s,
+        })
+    else:
+        print("  No disponible.")
 
     print("\n✅ Sync completo.")
 

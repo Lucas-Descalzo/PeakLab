@@ -1,9 +1,16 @@
 "use client"
 import { useEffect, useState } from "react"
+import TrainingStatusBadge from "@/components/TrainingStatusBadge"
 
 interface Brief {
   score: number; status: string; color: string
   recommendation: string; why: string; focus: string; action: string
+}
+
+function derivedTrainingStatus(score: number) {
+  if (score >= 75) return { key: "productive", label: "Productivo", description: "", color: "lime", icon: "⚡" }
+  if (score >= 50) return { key: "maintaining", label: "Manteniendo", description: "", color: "yellow", icon: "📊" }
+  return { key: "recovery", label: "Recuperación", description: "", color: "orange", icon: "⚠️" }
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -52,8 +59,12 @@ export default function PeakScoreHero() {
         </div>
       </div>
 
-      <div className="h-1.5 bg-[#1e2a35] rounded-full mb-5">
+      <div className="h-1.5 bg-[#1e2a35] rounded-full mb-3">
         <div className="h-1.5 rounded-full bg-lime-400 transition-all duration-1000" style={{ width: `${brief.score}%` }} />
+      </div>
+
+      <div className="mb-4">
+        <TrainingStatusBadge trainingStatus={derivedTrainingStatus(brief.score)} size="sm" />
       </div>
 
       <div className="space-y-3">
