@@ -34,19 +34,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r scripts/requirements.txt
 
-      # Prioridad 1: tokens pre-generados localmente (base64 en secret)
-      # Esto evita el login con usuario/contraseña por completo.
-      # Ver README del workflow para cómo generar GARMIN_TOKENS_B64.
-      - name: Seed Garmin tokens from secret
-        if: ${{ env.GARMIN_TOKENS_B64 != '' }}
-        run: |
-          mkdir -p ~/.garmin_tokens
-          echo "$GARMIN_TOKENS_B64" | base64 -d | tar xz -C ~/.garmin_tokens
-          echo "✓ Tokens restaurados desde secret GARMIN_TOKENS_B64"
-
-      # Prioridad 2: cache de runs anteriores (cuando ya hubo un login exitoso)
+      # Restaurar caché siempre: puede tener tokens más frescos que el secret
+      # (el script en Python decide qué fuente usar: env var > disco)
       - name: Restore Garmin tokens from cache
-        if: ${{ env.GARMIN_TOKENS_B64 == '' }}
         uses: actions/cache@v4
         with:
           path: ~/.garmin_tokens
@@ -55,8 +45,6 @@ jobs:
 
       - name: Run Garmin sync
         env:
-          GARMIN_USER: ${{ secrets.GARMIN_USER }}
-          GARMIN_PASS: ${{ secrets.GARMIN_PASS }}
           APP_URL: ${{ secrets.APP_URL }}
           SYNC_SECRET: ${{ secrets.SYNC_SECRET }}
         run: |

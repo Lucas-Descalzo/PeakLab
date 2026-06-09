@@ -1,24 +1,25 @@
 """
 Garmin Connect sync — HRV, sueño y actividades de running.
 
-Funciona en dos modos:
-  - Local (PC):        lee credenciales de scripts/.env
-  - GitHub Actions:    lee credenciales de variables de entorno del runner
+Autenticación (sin SSO interactivo):
+  - GitHub Actions: secret GARMIN_TOKENS_B64 (base64 de un tar.gz con los .json de garth)
+  - Caché:          tokens guardados en runs anteriores (~/.garmin_tokens)
+  - Local (PC):     tokens generados con scripts/generate_tokens.py
+
+Si no hay tokens válidos el script falla inmediatamente — no reintenta login SSO.
 
 Uso:
   python scripts/garmin_sync.py           # últimos 2 días
   python scripts/garmin_sync.py 7         # últimos 7 días
   python scripts/garmin_sync.py 30        # carga histórico (en tandas)
 
-Manejo de rate limiting (429 Garmin SSO):
-  - Login: hasta 3 intentos con backoff de 2/5/10 minutos
-  - API calls: pausa de 1s entre requests
-  - Syncs largos: procesa de a 5 días con pausa de 8s entre tandas
-
 Dependencias: pip install garth requests python-dotenv
 """
+import base64
+import io
 import os
 import sys
+import tarfile
 import time
 import random
 import requests
@@ -41,8 +42,6 @@ except ImportError:
     sys.exit(1)
 
 # Config desde env vars
-GARMIN_USER = os.environ.get("GARMIN_USER", "")
-GARMIN_PASS = os.environ.get("GARMIN_PASS", "")
 APP_URL = os.environ.get("APP_URL", "http://localhost:3000").rstrip("/")
 SYNC_SECRET = os.environ.get("SYNC_SECRET", "")
 TOKEN_DIR = Path.home() / ".garmin_tokens"
@@ -72,50 +71,63 @@ def garmin_api_call(path: str, **kwargs):
                 raise
 
 
+def load_tokens_from_env() -> bool:
+    """Decodifica GARMIN_TOKENS_B64 y escribe los archivos en TOKEN_DIR.
+
+    Maneja tars creados tanto con path relativo (./) como absoluto
+    (/home/user/.garmin_tokens/) aplanando cualquier subdirectorio.
+    """
+    b64 = os.environ.get("GARMIN_TOKENS_B64", "").strip()
+    if not b64:
+        return False
+    try:
+        raw = base64.b64decode(b64)
+        TOKEN_DIR.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar:
+            tar.extractall(TOKEN_DIR)
+        # Aplanar: mover .json de cualquier subdirectorio al nivel raíz de TOKEN_DIR
+        for f in list(TOKEN_DIR.rglob("*.json")):
+            if f.parent != TOKEN_DIR:
+                f.rename(TOKEN_DIR / f.name)
+        # Limpiar subdirectorios vacíos que hayan quedado
+        for sub in [p for p in TOKEN_DIR.iterdir() if p.is_dir()]:
+            try:
+                sub.rmdir()
+            except OSError:
+                pass
+        token_files = list(TOKEN_DIR.glob("*.json"))
+        print(f"✓ Tokens decodificados desde GARMIN_TOKENS_B64: {[f.name for f in token_files]}")
+        return bool(token_files)
+    except Exception as e:
+        print(f"✗ Error decodificando GARMIN_TOKENS_B64: {e}")
+        return False
+
+
 def login():
     TOKEN_DIR.mkdir(exist_ok=True)
 
-    # Intentar reutilizar tokens pre-cargados (sin llamada de verificación que
-    # dispara OAuth2 refresh hacia mobile.integration.garmin.com)
-    token_files = list(TOKEN_DIR.glob("*.json"))
-    if token_files:
-        try:
-            garth.resume(str(TOKEN_DIR))
-            print(f"✓ Tokens cargados desde {TOKEN_DIR} ({len(token_files)} archivo/s). Sin login SSO.")
-            return
-        except Exception as e:
-            print(f"⚠ Error al cargar tokens: {e}. Se intenta login con credenciales.")
-    else:
-        print(f"  Sin tokens en {TOKEN_DIR} — se requiere login SSO.")
+    # Prioridad 1: decodificar directamente desde el secret (más confiable que el step shell)
+    if os.environ.get("GARMIN_TOKENS_B64", "").strip():
+        if not load_tokens_from_env():
+            print("✗ GARMIN_TOKENS_B64 presente pero falló la decodificación. Abortando.")
+            sys.exit(1)
 
-    if not GARMIN_USER or not GARMIN_PASS:
-        print("ERROR: Sin tokens y sin GARMIN_USER/GARMIN_PASS — imposible autenticar.")
+    # Prioridad 2: tokens en disco restaurados desde el caché de GitHub Actions
+    token_files = list(TOKEN_DIR.glob("*.json"))
+    if not token_files:
+        print("✗ Sin tokens disponibles. Opciones:")
+        print("  1. Generá tokens localmente con scripts/generate_tokens.py")
+        print("  2. Actualizá el secret GARMIN_TOKENS_B64 en GitHub → Settings → Secrets")
         sys.exit(1)
 
-    # Login con retry y backoff
-    max_attempts = 3
-    delays = [120, 300, 600]  # 2min, 5min, 10min
-    for attempt in range(max_attempts):
-        try:
-            print(f"Autenticando como {GARMIN_USER} (intento {attempt+1}/{max_attempts})...")
-            garth.login(GARMIN_USER, GARMIN_PASS)
-            garth.save(str(TOKEN_DIR))
-            print("✓ Login exitoso.")
-            return
-        except Exception as e:
-            if is_rate_limit_error(e):
-                if attempt < max_attempts - 1:
-                    wait = delays[attempt] + random.uniform(0, 60)
-                    print(f"⏳ Rate limit en SSO (429). Garmin bloqueó temporalmente.")
-                    print(f"   Esperando {wait/60:.1f} minutos antes del intento {attempt+2}...")
-                    time.sleep(wait)
-                else:
-                    print("⛔ Garmin sigue bloqueando después de 3 intentos.")
-                    print("   Esperá 30-60 minutos y volvé a ejecutar el workflow.")
-                    sys.exit(1)
-            else:
-                print(f"✗ Error de login: {e}")
-                sys.exit(1)
+    # Cargar en garth sin llamada de verificación (evita OAuth2 refresh prematuro)
+    try:
+        garth.resume(str(TOKEN_DIR))
+        print(f"✓ Sesión garth inicializada ({len(token_files)} token/s). Sin SSO.")
+    except Exception as e:
+        print(f"✗ garth.resume() falló: {e}")
+        print("  Tokens corruptos o expirados. Regeneralos y actualizá GARMIN_TOKENS_B64.")
+        sys.exit(1)
 
 
 _post_ok = 0
@@ -315,13 +327,6 @@ def sync_in_chunks(days_back: int):
 def validate_env():
     """Falla rápido si las variables requeridas no están configuradas."""
     errors = []
-    # Credenciales SSO son opcionales cuando hay tokens pre-cargados en disco
-    has_tokens = TOKEN_DIR.exists() and bool(list(TOKEN_DIR.glob("*.json")))
-    if not has_tokens:
-        if not GARMIN_USER:
-            errors.append("GARMIN_USER no está configurado (secret de GitHub)")
-        if not GARMIN_PASS:
-            errors.append("GARMIN_PASS no está configurado (secret de GitHub)")
     if not SYNC_SECRET:
         errors.append("SYNC_SECRET no está configurado (secret de GitHub) — el API lo requiere")
     if "localhost" in APP_URL:
@@ -373,6 +378,12 @@ def main():
         })
     else:
         print("  No disponible.")
+
+    # Persistir tokens actualizados para que el caché de GitHub Actions tenga la versión más fresca
+    try:
+        garth.save(str(TOKEN_DIR))
+    except Exception:
+        pass
 
     print(f"\n✅ Sync completo. Enviados: {_post_ok} OK, {_post_fail} fallos.")
     if _post_fail > 0 and _post_ok == 0:
