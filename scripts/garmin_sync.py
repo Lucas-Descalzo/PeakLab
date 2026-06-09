@@ -182,8 +182,9 @@ def sync_wellness(day: date):
     data = {"date": day_str}
     display_name = get_display_name()
 
+    hrv_path = f"/hrv-service/hrv/{day_str}"
     try:
-        hrv_data = garmin_api_call(f"/hrv-service/hrv/{day_str}")
+        hrv_data = garmin_api_call(hrv_path)
         if hrv_data and "hrvSummary" in hrv_data:
             s = hrv_data["hrvSummary"]
             data["hrv"] = s.get("lastNight")
@@ -191,16 +192,15 @@ def sync_wellness(day: date):
             data["hrv_baseline_upper"] = s.get("baselineHighUpper")
             data["hrv_status"] = s.get("status")
     except Exception as e:
-        print(f"  HRV error: {e}")
+        print(f"  ⚠ HRV no disponible ({hrv_path}): {e}")
         _garmin_errors += 1
 
+    sleep_path = (
+        f"/wellness-service/wellness/dailySleepData/{display_name}/{day_str}"
+        if display_name else
+        f"/wellness-service/wellness/dailySleepData/{day_str}"
+    )
     try:
-        # Garmin requiere displayName en el path; sin él devuelve 400
-        sleep_path = (
-            f"/wellness-service/wellness/dailySleepData/{display_name}/{day_str}"
-            if display_name else
-            f"/wellness-service/wellness/dailySleepData/{day_str}"
-        )
         sleep_data = garmin_api_call(sleep_path)
         if sleep_data:
             dto = sleep_data.get("dailySleepDTO") or sleep_data
@@ -223,21 +223,20 @@ def sync_wellness(day: date):
                         else None
                     )
     except Exception as e:
-        print(f"  Sleep error: {e}")
+        print(f"  ⚠ Sueño no disponible ({sleep_path}): {e}")
         _garmin_errors += 1
 
+    hr_path = (
+        f"/wellness-service/wellness/dailyHeartRate/{display_name}/{day_str}"
+        if display_name else
+        f"/wellness-service/wellness/dailyHeartRate/{day_str}"
+    )
     try:
-        # Garmin requiere displayName en el path; sin él devuelve 403
-        hr_path = (
-            f"/wellness-service/wellness/dailyHeartRate/{display_name}/{day_str}"
-            if display_name else
-            f"/wellness-service/wellness/dailyHeartRate/{day_str}"
-        )
         hr_data = garmin_api_call(hr_path)
         if hr_data:
             data["resting_hr"] = hr_data.get("restingHeartRate")
     except Exception as e:
-        print(f"  HR error: {e}")
+        print(f"  ⚠ FC reposo no disponible ({hr_path}): {e}")
         _garmin_errors += 1
 
     ok = post("/api/sync/wellness", data)
@@ -422,13 +421,13 @@ def main():
     except Exception:
         pass
 
-    print(f"\n✅ Sync completo. Enviados: {_post_ok} OK, {_post_fail} fallos. Errores Garmin: {_garmin_errors}.")
-    if _post_fail > 0 and _post_ok == 0:
-        print("❌ Todos los requests a la app fallaron. Revisá APP_URL, SYNC_SECRET y UPSTASH_REDIS_REST_URL en Vercel.")
-        sys.exit(1)
+    status = "✅" if _post_fail == 0 else "⚠"
+    print(f"\n{status} Sync completo — app: {_post_ok} OK / {_post_fail} fallos | Garmin: {_garmin_errors} advertencia/s.")
     if _garmin_errors > 0:
-        print(f"⚠ {_garmin_errors} error/s al obtener datos de Garmin — algunos campos de wellness pueden estar vacíos.")
-        sys.exit(2)
+        print(f"  → Algunos campos de wellness quedaron vacíos (ver ⚠ arriba). Datos parciales guardados.")
+    if _post_fail > 0 and _post_ok == 0:
+        print("❌ Todos los requests a la app fallaron. Verificá APP_URL, SYNC_SECRET y KV_REST_API_URL en Vercel.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
