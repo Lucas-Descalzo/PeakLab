@@ -75,21 +75,21 @@ def garmin_api_call(path: str, **kwargs):
 def login():
     TOKEN_DIR.mkdir(exist_ok=True)
 
-    # Intentar reutilizar token cacheado primero
-    try:
-        garth.resume(str(TOKEN_DIR))
-        garmin_api_call("/userprofile-service/userprofile/personal-information")
-        print("✓ Token válido reutilizado (sin login).")
-        return
-    except Exception as e:
-        if is_rate_limit_error(e):
-            print(f"⛔ Rate limit al verificar token: {e}")
-            raise
-        # Token inválido o expirado — necesita re-login
-        pass
+    # Intentar reutilizar tokens pre-cargados (sin llamada de verificación que
+    # dispara OAuth2 refresh hacia mobile.integration.garmin.com)
+    token_files = list(TOKEN_DIR.glob("*.json"))
+    if token_files:
+        try:
+            garth.resume(str(TOKEN_DIR))
+            print(f"✓ Tokens cargados desde {TOKEN_DIR} ({len(token_files)} archivo/s). Sin login SSO.")
+            return
+        except Exception as e:
+            print(f"⚠ Error al cargar tokens: {e}. Se intenta login con credenciales.")
+    else:
+        print(f"  Sin tokens en {TOKEN_DIR} — se requiere login SSO.")
 
     if not GARMIN_USER or not GARMIN_PASS:
-        print("ERROR: GARMIN_USER y GARMIN_PASS son requeridos.")
+        print("ERROR: Sin tokens y sin GARMIN_USER/GARMIN_PASS — imposible autenticar.")
         sys.exit(1)
 
     # Login con retry y backoff
@@ -315,10 +315,13 @@ def sync_in_chunks(days_back: int):
 def validate_env():
     """Falla rápido si las variables requeridas no están configuradas."""
     errors = []
-    if not GARMIN_USER:
-        errors.append("GARMIN_USER no está configurado (secret de GitHub)")
-    if not GARMIN_PASS:
-        errors.append("GARMIN_PASS no está configurado (secret de GitHub)")
+    # Credenciales SSO son opcionales cuando hay tokens pre-cargados en disco
+    has_tokens = TOKEN_DIR.exists() and bool(list(TOKEN_DIR.glob("*.json")))
+    if not has_tokens:
+        if not GARMIN_USER:
+            errors.append("GARMIN_USER no está configurado (secret de GitHub)")
+        if not GARMIN_PASS:
+            errors.append("GARMIN_PASS no está configurado (secret de GitHub)")
     if not SYNC_SECRET:
         errors.append("SYNC_SECRET no está configurado (secret de GitHub) — el API lo requiere")
     if "localhost" in APP_URL:
