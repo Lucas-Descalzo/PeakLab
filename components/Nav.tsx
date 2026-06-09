@@ -1,13 +1,14 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Home, Zap, Dumbbell, BarChart3, MessageCircle } from "lucide-react";
 
 const links = [
-  { href: "/",              label: "Inicio",   icon: "⚡" },
-  { href: "/entrenamiento", label: "Entrena",  icon: "🏃" },
-  { href: "/gym",           label: "Registro", icon: "✏️" },
-  { href: "/metricas",      label: "Progreso", icon: "📊" },
-  { href: "/mas",           label: "Más",      icon: "⋯" },
+  { href: "/",              label: "Inicio",  Icon: Home          },
+  { href: "/entrenamiento", label: "Entrena", Icon: Zap           },
+  { href: "/gym",           label: "Gym",     Icon: Dumbbell      },
+  { href: "/metricas",      label: "Progreso",Icon: BarChart3     },
+  { href: "/chat",          label: "Coach",   Icon: MessageCircle },
 ];
 
 export default function Nav() {
@@ -15,20 +16,22 @@ export default function Nav() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 nav-backdrop border-t border-zinc-800/60">
       <div className="max-w-4xl mx-auto flex justify-around">
-        {links.map((l) => {
-          const active = pathname === l.href;
+        {links.map(({ href, label, Icon }) => {
+          const active = pathname === href;
           return (
             <Link
-              key={l.href}
-              href={l.href}
+              key={href}
+              href={href}
               className={`flex flex-col items-center py-3 px-4 text-xs transition-colors ${
                 active ? "text-lime-400" : "text-zinc-500 hover:text-zinc-200"
               }`}
             >
-              <span className={`text-xl mb-0.5 ${active ? "drop-shadow-[0_0_8px_rgba(74,222,128,0.6)]" : ""}`}>
-                {l.icon}
-              </span>
-              <span className={active ? "font-semibold" : ""}>{l.label}</span>
+              <Icon
+                size={20}
+                className={`mb-0.5 ${active ? "drop-shadow-[0_0_8px_rgba(74,222,128,0.6)]" : ""}`}
+                strokeWidth={active ? 2.5 : 1.75}
+              />
+              <span className={active ? "font-semibold" : ""}>{label}</span>
             </Link>
           );
         })}

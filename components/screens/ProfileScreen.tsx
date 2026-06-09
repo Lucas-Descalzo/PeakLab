@@ -1,6 +1,6 @@
 "use client"
-import Link from "next/link"
 import { ChevronRight, Target, Trophy } from "lucide-react"
+
 import Pill from "@/components/ui/Pill"
 
 const GOALS = [
@@ -105,35 +105,32 @@ export default function ProfileScreen() {
         </div>
       </div>
 
-      {/* Coach link */}
-      <Link
-        href="/chat"
-        className="flex items-center justify-between bg-[#0f1419] border border-[#1e2a35] rounded-2xl px-5 py-4 hover:bg-white/[0.02] transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <span className="text-xl">💬</span>
-          <span className="text-slate-200 text-sm font-medium">Coach IA</span>
-        </div>
-        <ChevronRight size={16} className="text-slate-600" />
-      </Link>
-
-      {/* Settings list */}
+      {/* Settings list — items not yet implemented */}
       <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl overflow-hidden">
         {SETTINGS.map((item, i, arr) => (
           <div
             key={item}
-            className={`flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-white/[0.02] transition-colors ${
+            className={`flex items-center justify-between px-5 py-4 ${
               i < arr.length - 1 ? "border-b border-[#1e2a35]" : ""
             }`}
           >
-            <span className="text-slate-300 text-sm">{item}</span>
-            <ChevronRight size={16} className="text-slate-600" />
+            <span className="text-slate-500 text-sm">{item}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 bg-slate-800 px-2 py-0.5 rounded-full">
+                Próximamente
+              </span>
+              <ChevronRight size={16} className="text-slate-700" />
+            </div>
           </div>
         ))}
       </div>
 
-      {/* Sign out */}
-      <button className="w-full bg-[#0f1419] border border-[#1e2a35] rounded-2xl px-5 py-4 text-red-400 text-sm font-semibold text-center hover:bg-red-900/10 transition-colors">
+      {/* Sign out — auth not configured yet */}
+      <button
+        disabled
+        title="Sin auth configurado aún"
+        className="w-full bg-[#0f1419] border border-[#1e2a35] rounded-2xl px-5 py-4 text-slate-600 text-sm font-semibold text-center cursor-not-allowed opacity-50"
+      >
         Cerrar sesión
       </button>
     </div>
