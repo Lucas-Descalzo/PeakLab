@@ -2,8 +2,8 @@ name: Garmin Daily Sync
 
 on:
   schedule:
-    # Todos los días a las 11:00 UTC = 8:00 AM Argentina (UTC-3)
-    - cron: '0 11 * * *'
+    # Todos los días a las 08:00 UTC = 05:00 AM Argentina (UTC-3)
+    - cron: '0 8 * * *'
   workflow_dispatch:
     inputs:
       days:

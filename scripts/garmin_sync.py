@@ -118,7 +118,11 @@ def login():
                 sys.exit(1)
 
 
+_post_ok = 0
+_post_fail = 0
+
 def post(endpoint: str, data: dict) -> bool:
+    global _post_ok, _post_fail
     url = f"{APP_URL}{endpoint}"
     try:
         res = requests.post(
@@ -127,9 +131,16 @@ def post(endpoint: str, data: dict) -> bool:
             headers={"x-sync-secret": SYNC_SECRET},
             timeout=15,
         )
-        return res.status_code == 200
+        if res.status_code == 200:
+            _post_ok += 1
+            return True
+        else:
+            print(f"  ✗ HTTP {res.status_code} en {endpoint}: {res.text[:200]}")
+            _post_fail += 1
+            return False
     except Exception as e:
         print(f"  ✗ Error enviando a {endpoint}: {e}")
+        _post_fail += 1
         return False
 
 
@@ -301,6 +312,32 @@ def sync_in_chunks(days_back: int):
     sync_activities(days_back)
 
 
+def validate_env():
+    """Falla rápido si las variables requeridas no están configuradas."""
+    errors = []
+    if not GARMIN_USER:
+        errors.append("GARMIN_USER no está configurado (secret de GitHub)")
+    if not GARMIN_PASS:
+        errors.append("GARMIN_PASS no está configurado (secret de GitHub)")
+    if not SYNC_SECRET:
+        errors.append("SYNC_SECRET no está configurado (secret de GitHub) — el API lo requiere")
+    if "localhost" in APP_URL:
+        errors.append(
+            f"APP_URL apunta a localhost ({APP_URL}). "
+            "Configurá el secret APP_URL con tu URL de Vercel: "
+            "https://training-app-beta-ashen.vercel.app"
+        )
+    if errors:
+        print("❌ Variables de entorno faltantes o incorrectas:\n")
+        for e in errors:
+            print(f"  • {e}")
+        print(
+            "\nConfigurá estos secrets en: "
+            "GitHub → repo → Settings → Secrets and variables → Actions"
+        )
+        sys.exit(1)
+
+
 def main():
     days = int(sys.argv[1]) if len(sys.argv) > 1 else 2
 
@@ -309,6 +346,7 @@ def main():
     print(f"Días: {days} | App: {APP_URL}")
     print(f"{'='*50}\n")
 
+    validate_env()
     login()
 
     if days <= CHUNK_SIZE:
@@ -333,7 +371,10 @@ def main():
     else:
         print("  No disponible.")
 
-    print("\n✅ Sync completo.")
+    print(f"\n✅ Sync completo. Enviados: {_post_ok} OK, {_post_fail} fallos.")
+    if _post_fail > 0 and _post_ok == 0:
+        print("❌ Todos los requests fallaron. Revisá APP_URL y SYNC_SECRET.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
