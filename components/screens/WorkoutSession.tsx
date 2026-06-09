@@ -3,6 +3,9 @@ import { useState, useEffect, useRef } from "react"
 import { Check, Plus, Pause, Play, Trophy, X } from "lucide-react"
 import type { GymDay } from "@/lib/gym-plan"
 
+const STORAGE_KEY = "peaklab_workout_session"
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
+
 interface SessionSet {
   kg: number
   reps: number
@@ -27,6 +30,39 @@ interface WorkoutSessionProps {
   onClose: () => void
 }
 
+interface PersistedSession {
+  type: string
+  exercises: SessionExercise[]
+  exIdx: number
+  activeSet: number
+  elapsed: number
+  savedAt: number
+}
+
+function loadSavedSession(type: string): PersistedSession | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed: PersistedSession = JSON.parse(raw)
+    if (parsed.type !== type) return null
+    if (Date.now() - parsed.savedAt > SESSION_TTL_MS) {
+      localStorage.removeItem(STORAGE_KEY)
+      return null
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function clearSavedSession() {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // ignore
+  }
+}
+
 function est1RM(kg: number, reps: number) {
   return reps > 0 ? Math.round(kg * (1 + reps / 30)) : 0
 }
@@ -34,20 +70,48 @@ function est1RM(kg: number, reps: number) {
 export default function WorkoutSession({ gymDay, onFinish, onClose }: WorkoutSessionProps) {
   const allExercises = [...gymDay.exercises, ...gymDay.core]
 
-  // Init sets from plan
-  const [exercises, setExercises] = useState<SessionExercise[]>(() =>
-    allExercises.map(ex => ({
+  // Init sets from plan, restoring from localStorage if a matching session exists
+  const [exercises, setExercises] = useState<SessionExercise[]>(() => {
+    const saved = loadSavedSession(gymDay.type)
+    if (saved) return saved.exercises
+    return allExercises.map(ex => ({
       name: ex.name,
       sets: Array.from({ length: ex.sets }, () => ({ kg: 0, reps: 0, rir: 2, done: false })),
     }))
-  )
+  })
 
-  const [exIdx, setExIdx] = useState(0)
-  const [activeSet, setActiveSet] = useState(0)
-  const [elapsed, setElapsed] = useState(0)
+  const [exIdx, setExIdx] = useState<number>(() => {
+    const saved = loadSavedSession(gymDay.type)
+    return saved ? saved.exIdx : 0
+  })
+  const [activeSet, setActiveSet] = useState<number>(() => {
+    const saved = loadSavedSession(gymDay.type)
+    return saved ? saved.activeSet : 0
+  })
+  const [elapsed, setElapsed] = useState<number>(() => {
+    const saved = loadSavedSession(gymDay.type)
+    return saved ? saved.elapsed : 0
+  })
   const [running, setRunning] = useState(true)
   const [saving, setSaving] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Persist session state to localStorage on every relevant state change
+  useEffect(() => {
+    try {
+      const session: PersistedSession = {
+        type: gymDay.type,
+        exercises,
+        exIdx,
+        activeSet,
+        elapsed,
+        savedAt: Date.now(),
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(session))
+    } catch {
+      // ignore storage errors (e.g. private mode quota)
+    }
+  }, [exercises, exIdx, activeSet, elapsed, gymDay.type])
 
   useEffect(() => {
     if (running) {
@@ -99,6 +163,7 @@ export default function WorkoutSession({ gymDay, onFinish, onClose }: WorkoutSes
 
   async function handleFinish() {
     setSaving(true)
+    clearSavedSession()
     await onFinish({
       type: gymDay.type,
       exercises,
@@ -136,7 +201,10 @@ export default function WorkoutSession({ gymDay, onFinish, onClose }: WorkoutSes
           >
             {running ? <Pause size={13} /> : <Play size={13} />}
           </button>
-          <button onClick={onClose} className="text-slate-600 hover:text-slate-400 transition-colors">
+          <button
+            onClick={() => { clearSavedSession(); onClose() }}
+            className="text-slate-600 hover:text-slate-400 transition-colors"
+          >
             <X size={18} />
           </button>
         </div>
