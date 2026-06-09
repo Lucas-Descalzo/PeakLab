@@ -22,23 +22,73 @@ export default function ChatPage() {
 
   async function send(text?: string) {
     const content = text || input.trim();
-    if (!content) return;
+    if (!content || loading) return;
 
     const userMsg: Message = { role: "user", content };
-    setMessages((prev) => [...prev, userMsg]);
+    const history = [...messages, userMsg];
+    setMessages(history);
     setInput("");
     setLoading(true);
+
+    // Append an empty assistant bubble that we'll fill as chunks arrive
+    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [...messages, userMsg] }),
+        body: JSON.stringify({ messages: history }),
       });
-      const data = await res.json();
-      setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
+
+      if (!res.ok || !res.body) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") break;
+          try {
+            const { text } = JSON.parse(jsonStr);
+            if (text) {
+              setMessages((prev) => {
+                const updated = [...prev];
+                updated[updated.length - 1] = {
+                  role: "assistant",
+                  content: updated[updated.length - 1].content + text,
+                };
+                return updated;
+              });
+            }
+          } catch {
+            // ignore malformed chunks
+          }
+        }
+      }
     } catch {
-      setMessages((prev) => [...prev, { role: "assistant", content: "Error de conexión." }]);
+      setMessages((prev) => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        // Replace empty bubble with error, or append new error message
+        if (last?.role === "assistant" && last.content === "") {
+          updated[updated.length - 1] = { role: "assistant", content: "Error de conexión." };
+        } else {
+          updated.push({ role: "assistant", content: "Error de conexión." });
+        }
+        return updated;
+      });
     } finally {
       setLoading(false);
     }
@@ -108,12 +158,17 @@ export default function ChatPage() {
                   : "bg-[#0f1419] border border-[#1e2a35] text-slate-200 rounded-bl-sm"
               }`}
             >
-              {m.content}
+              {m.content || (
+                <span className="text-slate-400">
+                  Pensando<span className="animate-pulse">...</span>
+                </span>
+              )}
             </div>
           </div>
         ))}
 
-        {loading && (
+        {/* Loading indicator only shown before first chunk arrives */}
+        {loading && messages[messages.length - 1]?.role !== "assistant" && (
           <div className="flex items-end gap-2 justify-start">
             <div className="w-7 h-7 rounded-full bg-lime-400/20 border border-lime-400/30 flex items-center justify-center text-sm flex-shrink-0 mb-0.5">
               🤖
