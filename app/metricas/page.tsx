@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { getRecentActivities, getLatestWellness } from "@/lib/db"
+import { computeLoadAnalysis } from "@/lib/load-analysis"
 import ProgressScreen from "@/components/screens/ProgressScreen"
 import TrainingLoadChart from "@/components/TrainingLoadChart"
 import ACWRCard from "@/components/ACWRCard"
@@ -47,17 +48,15 @@ const PERSONAL_RECORDS = [
 ]
 
 export default async function MetricasPage() {
+  // FIX: antes hacía self-fetch a NEXT_PUBLIC_APP_URL (variable que no existe
+  // en Vercel) => siempre caía en DEMO_LOAD. Ahora computa directo en el server.
   const [liveActivities, wellness, loadAnalysisRaw] = await Promise.all([
     getRecentActivities(10),
     getLatestWellness(),
-    process.env.NEXT_PUBLIC_APP_URL
-      ? fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/load-analysis`, {
-          cache: "no-store", next: { revalidate: 21600 },
-        }).then(r => r.json()).catch(() => null)
-      : Promise.resolve(null),
+    computeLoadAnalysis().catch(() => null),
   ])
 
-  const loadAnalysis = loadAnalysisRaw ?? DEMO_LOAD
+  const loadAnalysis = loadAnalysisRaw && loadAnalysisRaw.has_live_data ? loadAnalysisRaw : DEMO_LOAD
   const activities = liveActivities.length > 0 ? liveActivities : STATIC_ACTIVITIES
   const hasLiveData = liveActivities.length > 0
 

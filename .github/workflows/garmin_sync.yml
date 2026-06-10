@@ -37,10 +37,10 @@ jobs:
       # Restaurar caché siempre: puede tener tokens más frescos que el secret
       # (el script en Python decide qué fuente usar: env var > disco)
       - name: Restore Garmin tokens from cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.garmin_tokens
-          key: garmin-tokens-v1
+          key: garmin-tokens-${{ github.run_id }}
           restore-keys: garmin-tokens-
 
       - name: Run Garmin sync
@@ -58,4 +58,6 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/.garmin_tokens
-          key: garmin-tokens-v1
+          # key única por run: las caches son inmutables, una key fija
+          # solo se guarda la primera vez y los tokens refrescados se pierden
+          key: garmin-tokens-${{ github.run_id }}

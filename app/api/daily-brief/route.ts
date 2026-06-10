@@ -2,13 +2,10 @@ import { NextResponse } from "next/server"
 import { getLatestWellness, getRecentActivities } from "@/lib/db"
 import { getTodayWorkout } from "@/lib/training-plan"
 import { calcTrainingLoad, calcReadiness, calcACWR, calcTrainingStatus, calcLoadFocus, calcHRVTrend } from "@/lib/training-readiness"
+import { computePerformance } from "@/lib/performance-engine"
+import { argentinaToday, argentinaMidnightTimestamp } from "@/lib/dates"
 
-function midnightTimestamp(): number {
-  const now = new Date()
-  const midnight = new Date(now)
-  midnight.setHours(23, 59, 59, 0)
-  return Math.floor(midnight.getTime() / 1000)
-}
+
 
 function ruleBased(score: number, workoutTitle: string) {
   if (score >= 75) return {
@@ -32,7 +29,7 @@ function ruleBased(score: number, workoutTitle: string) {
 }
 
 export async function GET() {
-  const today = new Date().toISOString().split("T")[0]
+  const today = argentinaToday()
 
   // Check cache
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -87,7 +84,12 @@ export async function GET() {
     sleep_total_s: wellness?.sleep_total_s ?? Math.round(8.2 * 3600),
     sleep_score: wellness?.sleep_score ?? 89,
   }
-  const readiness = calcReadiness(wellnessData, load)
+  // Readiness sintético (HRV 30% · carga 25% · sueño 20% · estrés 15% · deuda 10%).
+  // Si todavía no hay historial en Redis cae al cálculo legacy.
+  const perf = await computePerformance().catch(() => null)
+  const readiness = perf && perf.has_live_data
+    ? perf.readiness
+    : calcReadiness(wellnessData, load)
 
   const hrv_trend = calcHRVTrend([
     {
@@ -106,7 +108,14 @@ export async function GET() {
     color: readiness.color,
     hrv: wellnessData.hrv,
     sleep_h: parseFloat((wellnessData.sleep_total_s / 3600).toFixed(1)),
-    tsb: parseFloat(load.tsb.toFixed(1)),
+    tsb: perf?.today ? perf.today.tsb : parseFloat(load.tsb.toFixed(1)),
+    ...(perf && perf.has_live_data && {
+      readiness_components: perf.readiness.components,
+      ctl: perf.today?.ctl,
+      atl: perf.today?.atl,
+      acwr: perf.today?.acwr,
+      acwr_zone: perf.today?.acwr_zone,
+    }),
   }
 
   // Try Gemini
@@ -149,7 +158,7 @@ Respondé SOLO con JSON sin markdown:
 
   // Cache until midnight
   try {
-    if (redis) await redis.set(`daily-brief:${today}`, JSON.stringify(result), { exat: midnightTimestamp() })
+    if (redis) await redis.set(`daily-brief:${today}`, JSON.stringify(result), { exat: argentinaMidnightTimestamp() })
   } catch {}
 
   return NextResponse.json({ ...result, cached: false })

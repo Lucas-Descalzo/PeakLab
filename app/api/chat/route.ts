@@ -8,10 +8,13 @@ export const maxDuration = 30;
 // Model fallback chain — tries newest first
 const GEMINI_MODELS = [
   "gemini-2.5-flash",
-  "gemini-2.5-flash-preview-05-20",
+  "gemini-2.5-flash-lite",   // cuota free-tier más alta (RPM/RPD)
   "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
   "gemini-1.5-flash",
 ];
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function buildContext(): Promise<string> {
   const today = new Date().toISOString().split("T")[0];
@@ -99,32 +102,68 @@ export async function POST(req: NextRequest) {
       ...GEMINI_MODELS,
     ];
 
-    for (const model of modelsToTry) {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
-      const r = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents,
-          generationConfig: { maxOutputTokens: 400, temperature: 0.7 },
-        }),
-      });
+    // FIX 429/5xx: antes, un 429 (rate limit) o 503 (sobrecarga) del PRIMER
+    // modelo abortaba con throw y el usuario veía "Error técnico: Gemini 429".
+    // Ahora: cada modelo tiene cuota free-tier INDEPENDIENTE, así que un 429
+    // rota al siguiente modelo; los 5xx (sobrecarga de Google) se reintentan.
+    // Dos pasadas sobre la cadena con backoff, dentro del maxDuration de 30s.
+    let lastStatus = 0;
+    outer: for (let pass = 0; pass < 2 && !streamRes; pass++) {
+      if (pass > 0) await sleep(2500); // backoff antes de la segunda pasada
+      for (const model of modelsToTry) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
+        let r: Response;
+        try {
+          r = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents,
+              generationConfig: { maxOutputTokens: 400, temperature: 0.7 },
+            }),
+          });
+        } catch {
+          continue; // error de red puntual → siguiente modelo
+        }
 
-      if (r.ok) {
-        streamRes = r;
-        usedModel = model;
-        break;
-      }
+        if (r.ok) {
+          streamRes = r;
+          usedModel = model;
+          break outer;
+        }
 
-      const errText = await r.text();
-      if (r.status !== 404 && r.status !== 400) {
-        throw new Error(`Gemini ${r.status}: ${errText.slice(0, 200)}`);
+        lastStatus = r.status;
+        await r.text().catch(() => ""); // drenar el body
+        if (r.status === 404 || r.status === 400) {
+          console.log(`Model ${model} not available (${r.status}), trying next...`);
+          continue; // modelo inexistente para esta key → siguiente
+        }
+        if (r.status === 429) {
+          console.log(`Model ${model} rate-limited (429), rotating...`);
+          continue; // cuota agotada EN ESTE MODELO → probar otro
+        }
+        if (r.status >= 500) {
+          console.log(`Model ${model} server error (${r.status}), rotating...`);
+          await sleep(800);
+          continue; // Google sobrecargado → breve pausa y siguiente
+        }
+        // Otros códigos (401/403 = key inválida): no tiene sentido rotar
+        break outer;
       }
-      console.log(`Model ${model} not available (${r.status}), trying next...`);
     }
 
     if (!streamRes) {
-      throw new Error("No Gemini model available. Check GEMINI_API_KEY permissions.");
+      // Mensaje amigable como respuesta normal del chat, no "error técnico"
+      const friendly =
+        lastStatus === 429
+          ? "Estoy al límite de la cuota gratuita de Gemini por ahora. Esperá un minuto y volvé a mandar el mensaje 🙏"
+          : lastStatus >= 500
+          ? "Los servidores de Gemini están sobrecargados en este momento. Probá de nuevo en unos segundos."
+          : `No pude conectar con Gemini (HTTP ${lastStatus || "?"}). Verificá la GEMINI_API_KEY en Vercel.`;
+      return new Response(
+        `data: ${JSON.stringify({ text: friendly })}\n\ndata: [DONE]\n\n`,
+        { headers: { "Content-Type": "text/event-stream" } }
+      );
     }
 
     console.log(`Streaming response with model: ${usedModel}`);

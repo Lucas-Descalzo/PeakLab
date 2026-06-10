@@ -84,7 +84,10 @@ def load_tokens_from_env() -> bool:
         raw = base64.b64decode(b64)
         TOKEN_DIR.mkdir(parents=True, exist_ok=True)
         with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar:
-            tar.extractall(TOKEN_DIR)
+            try:
+                tar.extractall(TOKEN_DIR, filter="data")
+            except TypeError:  # Python < 3.12 sin soporte de filter
+                tar.extractall(TOKEN_DIR)
         # Aplanar: mover .json de cualquier subdirectorio al nivel raíz de TOKEN_DIR
         for f in list(TOKEN_DIR.rglob("*.json")):
             if f.parent != TOKEN_DIR:
@@ -195,13 +198,15 @@ def sync_wellness(day: date):
         print(f"  ⚠ HRV no disponible ({hrv_path}): {e}")
         _garmin_errors += 1
 
-    sleep_path = (
-        f"/wellness-service/wellness/dailySleepData/{display_name}/{day_str}"
-        if display_name else
-        f"/wellness-service/wellness/dailySleepData/{day_str}"
-    )
+    # FIX: el endpoint correcto usa la fecha como query param, no en el path
+    sleep_path = f"/wellness-service/wellness/dailySleepData/{display_name}"
     try:
-        sleep_data = garmin_api_call(sleep_path)
+        if not display_name:
+            raise RuntimeError("displayName requerido para dailySleepData")
+        sleep_data = garmin_api_call(
+            sleep_path,
+            params={"date": day_str, "nonSleepBufferMinutes": 60},
+        )
         if sleep_data:
             dto = sleep_data.get("dailySleepDTO") or sleep_data
             if isinstance(dto, dict):
@@ -226,17 +231,32 @@ def sync_wellness(day: date):
         print(f"  ⚠ Sueño no disponible ({sleep_path}): {e}")
         _garmin_errors += 1
 
-    hr_path = (
-        f"/wellness-service/wellness/dailyHeartRate/{display_name}/{day_str}"
-        if display_name else
-        f"/wellness-service/wellness/dailyHeartRate/{day_str}"
-    )
+    # FIX: el endpoint correcto usa la fecha como query param, no en el path
+    hr_path = f"/wellness-service/wellness/dailyHeartRate/{display_name}"
     try:
-        hr_data = garmin_api_call(hr_path)
+        if not display_name:
+            raise RuntimeError("displayName requerido para dailyHeartRate")
+        hr_data = garmin_api_call(hr_path, params={"date": day_str})
         if hr_data:
             data["resting_hr"] = hr_data.get("restingHeartRate")
     except Exception as e:
         print(f"  ⚠ FC reposo no disponible ({hr_path}): {e}")
+        _garmin_errors += 1
+
+    # Estrés diario (para el componente 15% del readiness sintético)
+    try:
+        stress_data = garmin_api_call(
+            f"/wellness-service/wellness/dailyStress/{day_str}"
+        )
+        if stress_data:
+            avg = stress_data.get("avgStressLevel")
+            if avg is not None and avg >= 0:
+                data["stress_avg"] = avg
+            mx = stress_data.get("maxStressLevel")
+            if mx is not None and mx >= 0:
+                data["stress_max"] = mx
+    except Exception as e:
+        print(f"  ⚠ Estrés no disponible: {e}")
         _garmin_errors += 1
 
     ok = post("/api/sync/wellness", data)
@@ -321,7 +341,7 @@ def sync_activities(days_back: int):
 
             ok = post("/api/sync/activity", act)
             name = act.get("activityName", "Run")
-            dist_km = round(act.get("distance", 0) / 100000, 1)
+            dist_km = round(act.get("distance", 0) / 1000, 1)  # FIX: distance viene en metros
             zones_info = ", ".join(
                 f"Z{i}:{act.get(f'zone_{i}_s', 0)//60}m"
                 for i in range(1, 6)

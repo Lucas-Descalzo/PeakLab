@@ -41,7 +41,7 @@ export default function HomeScreen({ todayWorkout, currentWeek }: HomeScreenProp
   const [scoreAnim, setScoreAnim] = useState(0)
 
   useEffect(() => {
-    fetch("/api/daily-brief")
+    fetch("/api/daily-brief", { cache: "no-store" })
       .then(r => r.json())
       .then((d: DailyBrief) => setBrief(d))
       .catch(() => {})

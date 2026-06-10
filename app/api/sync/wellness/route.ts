@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { upsertWellness } from "@/lib/db";
+import { upsertWellness, invalidateDailyCaches } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
   const secret = req.headers.get("x-sync-secret");
@@ -12,5 +12,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   if (!body.date) return NextResponse.json({ error: "date required" }, { status: 400 });
   await upsertWellness(body);
+  // Datos nuevos => el daily-brief cacheado a la mañana quedó obsoleto
+  await invalidateDailyCaches();
   return NextResponse.json({ status: "ok", date: body.date });
 }

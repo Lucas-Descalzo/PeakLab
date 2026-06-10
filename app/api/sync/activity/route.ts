@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { upsertActivity } from "@/lib/db";
+import { upsertActivity, invalidateDailyCaches } from "@/lib/db";
 
 const HR_MAX = 201;
 const HR_REST = 45;
@@ -20,13 +20,17 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const durationS = Math.round((body.duration_s ?? body.duration ?? body.movingDuration ?? 0) / (body.duration_s ? 1 : 1000));
-  const distanceM = body.distance_m ?? (body.distance ?? 0) / 100;
+
+  // FIX: la API de Garmin Connect devuelve `duration`/`movingDuration` en SEGUNDOS
+  // y `distance` en METROS (antes se dividía por 1000 y 100 asumiendo ms/cm,
+  // lo que corrompía duración, distancia, pace y TRIMP).
+  const durationS = Math.round(body.duration_s ?? body.movingDuration ?? body.duration ?? 0);
+  const distanceM = Math.round(body.distance_m ?? body.distance ?? 0);
   const avgHr = Math.round(body.avg_hr ?? body.averageHR ?? body.avgHr ?? 0);
   const paceSecPerKm = distanceM > 0 ? durationS / (distanceM / 1000) : 0;
   const date = body.date ?? (
     body.startTimeLocal
-      ? new Date(body.startTimeLocal).toISOString().split("T")[0]
+      ? String(body.startTimeLocal).split(/[ T]/)[0]
       : new Date().toISOString().split("T")[0]
   );
 
@@ -65,6 +69,9 @@ export async function POST(req: NextRequest) {
     ...(recovery_time_s !== null && { recovery_time_s }),
     ...(trimp !== null && { trimp }),
   });
+
+  // Datos nuevos => invalidar brief/load-analysis cacheados del día
+  await invalidateDailyCaches();
 
   return NextResponse.json({ status: "ok", date });
 }

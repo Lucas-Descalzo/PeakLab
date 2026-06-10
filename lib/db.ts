@@ -4,6 +4,7 @@
  * funciona con datos estáticos de fallback.
  */
 import type { GymSession } from "./gym-storage";
+import { argentinaToday } from "./dates";
 
 export interface WellnessEntry {
   date: string;
@@ -17,6 +18,8 @@ export interface WellnessEntry {
   sleep_score?: number;
   resting_hr?: number;
   recovery_time_s?: number;
+  stress_avg?: number;
+  stress_max?: number;
 }
 
 export interface ActivityEntry {
@@ -56,29 +59,61 @@ async function redis() {
   });
 }
 
+/** Parse tolerante: @upstash/redis puede devolver string u objeto ya deserializado. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseValue<T>(raw: any): T | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw) as T; } catch { return null; }
+  }
+  return raw as T;
+}
+
 // ── Wellness ──────────────────────────────────────────────────────────────────
 
 export async function upsertWellness(entry: WellnessEntry): Promise<void> {
   if (!isConfigured()) return;
   const r = await redis();
-  await r.set(`wellness:${entry.date}`, JSON.stringify(entry));
+  const key = `wellness:${entry.date}`;
+  // FIX CRÍTICO: merge con la entrada existente. Antes se sobreescribía el
+  // objeto completo, y el POST final del sync ({date, recovery_time_s})
+  // borraba el HRV y el sueño del día.
+  const existing = parseValue<WellnessEntry>(await r.get(key)) ?? {};
+  const merged: WellnessEntry = { ...existing, ...entry };
+  // No pisar valores existentes con undefined/null
+  for (const k of Object.keys(merged) as (keyof WellnessEntry)[]) {
+    if (merged[k] === undefined || merged[k] === null) delete merged[k];
+  }
+  await r.set(key, JSON.stringify(merged));
 }
 
 export async function getLatestWellness(): Promise<WellnessEntry | null> {
-  if (!isConfigured()) return null;
+  const history = await getWellnessHistory(7);
+  return history.length > 0 ? history[history.length - 1] : null;
+}
+
+/**
+ * Últimos `days` días de wellness (orden cronológico ascendente).
+ * Una sola llamada MGET en lugar de N GETs secuenciales.
+ */
+export async function getWellnessHistory(days: number): Promise<WellnessEntry[]> {
+  if (!isConfigured()) return [];
   try {
     const r = await redis();
-    const today = new Date();
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(today);
-      d.setDate(d.getDate() - i);
-      const key = `wellness:${d.toISOString().split("T")[0]}`;
-      const raw = await r.get<string>(key);
-      if (raw) return JSON.parse(raw as string);
+    const today = argentinaToday();
+    const base = new Date(`${today}T12:00:00Z`);
+    const keys: string[] = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(base);
+      d.setUTCDate(d.getUTCDate() - i);
+      keys.push(`wellness:${d.toISOString().split("T")[0]}`);
     }
-    return null;
+    const vals = await r.mget<(string | WellnessEntry | null)[]>(...keys);
+    return vals
+      .map((v) => parseValue<WellnessEntry>(v))
+      .filter((v): v is WellnessEntry => v !== null);
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -101,11 +136,37 @@ export async function getRecentActivities(limit = 10): Promise<ActivityEntry[]> 
     const r = await redis();
     const keys = await r.zrange("activities:index", 0, limit - 1, { rev: true }) as string[];
     if (!keys?.length) return [];
-    const vals = await Promise.all(keys.map((k) => r.get<string>(k)));
-    return vals.filter(Boolean).map((v) => JSON.parse(v as string));
+    // Una sola llamada MGET en lugar de N GETs en paralelo
+    const vals = await r.mget<(string | ActivityEntry | null)[]>(...keys);
+    return vals
+      .map((v) => parseValue<ActivityEntry>(v))
+      .filter((v): v is ActivityEntry => v !== null);
   } catch {
     return [];
   }
+}
+
+// ── Invalidación de caches diarios ────────────────────────────────────────────
+
+/**
+ * Borra los caches calculados del día (daily-brief, load-analysis).
+ * Se llama desde las rutas de sync: si entran datos nuevos de Garmin,
+ * el brief cacheado a la mañana temprano queda obsoleto.
+ */
+export async function invalidateDailyCaches(): Promise<void> {
+  if (!isConfigured()) return;
+  try {
+    const r = await redis();
+    const today = argentinaToday();
+    const utcToday = new Date().toISOString().split("T")[0];
+    const keys = new Set([
+      `daily-brief:${today}`,
+      `load-analysis:${today}`,
+      `daily-brief:${utcToday}`,
+      `load-analysis:${utcToday}`,
+    ]);
+    await r.del(...Array.from(keys));
+  } catch {}
 }
 
 // ── Gym Sessions ──────────────────────────────────────────────────────────────
@@ -125,8 +186,10 @@ export async function getGymSessions(limit = 50): Promise<GymSession[]> {
   if (!isConfigured()) return [];
   try {
     const r = await redis();
-    const raw = await r.lrange("gym:sessions", 0, limit - 1) as string[];
-    return raw.map((s) => JSON.parse(s));
+    const raw = await r.lrange("gym:sessions", 0, limit - 1) as (string | GymSession)[];
+    return raw
+      .map((s) => parseValue<GymSession>(s))
+      .filter((s): s is GymSession => s !== null);
   } catch {
     return [];
   }
