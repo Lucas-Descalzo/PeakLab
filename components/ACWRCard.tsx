@@ -1,11 +1,12 @@
 "use client"
+import InfoHint from "@/components/ui/InfoHint"
 
 interface ACWRData {
   acwr: number
   atl: number
   ctl: number
   tsb: number
-  status: "detraining" | "sweet_spot" | "caution" | "danger"
+  status: "detraining" | "sweet_spot" | "caution" | "danger" | "insufficient"
   label: string
   color: string
   description: string
@@ -25,15 +26,22 @@ export default function ACWRCard({ acwr }: Props) {
     sweet_spot: "text-lime-400",
     caution: "text-yellow-400",
     danger: "text-red-400",
+    insufficient: "text-slate-400",
   }
 
   const valueColor = statusColorMap[acwr.status] ?? "text-lime-400"
 
   return (
     <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
-      <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">
-        ACWR — RATIO DE CARGA
-      </p>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
+          ACWR — RATIO DE CARGA
+        </p>
+        <InfoHint
+          title="¿Qué es el ACWR?"
+          text={"Compara cuánto entrenaste esta semana (carga aguda, 7 días) contra tu promedio del último mes (carga crónica, 28 días).\n\n• 0.8–1.3 → zona óptima: progresás sin riesgo.\n• 1.3–1.5 → precaución: subiste la carga rápido.\n• >1.5 → peligro: pico de carga asociado a lesiones.\n• <0.8 → subcarga: podés entrenar más.\n\nNecesita ~4 semanas de historial para ser confiable."}
+        />
+      </div>
 
       {/* Value + Status */}
       <div className="flex items-baseline justify-between mb-4">

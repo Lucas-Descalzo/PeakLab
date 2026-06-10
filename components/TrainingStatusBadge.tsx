@@ -1,4 +1,5 @@
 "use client"
+import InfoHint from "@/components/ui/InfoHint"
 
 interface TrainingStatusData {
   key: string
@@ -44,9 +45,15 @@ export default function TrainingStatusBadge({ trainingStatus, size = "md" }: Pro
 
   return (
     <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
-      <p className="text-xs text-slate-500 uppercase tracking-widest mb-3">
-        ESTADO DE ENTRENAMIENTO
-      </p>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs text-slate-500 uppercase tracking-widest">
+          ESTADO DE ENTRENAMIENTO
+        </p>
+        <InfoHint
+          title="Estado de entrenamiento"
+          text={"Clasifica tu momento según cómo evoluciona la carga semana a semana:\n\n• Productivo: la carga sube de forma sostenible — estás mejorando.\n• Manteniendo: carga estable, fitness estable.\n• Pico de forma: fresco y en forma, ideal para competir.\n• Sobrecarga: la carga subió demasiado rápido.\n• Desentrenamiento: volumen muy bajo, el fitness cae."}
+        />
+      </div>
       <div className="flex items-center gap-3">
         <span className="text-3xl leading-none">{icon}</span>
         <div>

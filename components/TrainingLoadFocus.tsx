@@ -1,4 +1,5 @@
 "use client"
+import InfoHint from "@/components/ui/InfoHint"
 
 interface LoadFocusData {
   base_aerobic_pct: number
@@ -47,9 +48,15 @@ function ZoneBar({
 export default function TrainingLoadFocus({ loadFocus }: Props) {
   return (
     <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
-      <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
         FOCO DE CARGA
       </p>
+        <InfoHint
+          title="Distribución de intensidad"
+          text={"Cómo se reparten tus minutos de carrera entre zonas:\n\n• Base aeróbica (Z1-Z2): debería ser ~80% del volumen. Construye la base sin desgastarte.\n• Umbral (Z3-Z4): ritmo sostenido exigente.\n• VO2max (Z5): esfuerzos máximos cortos.\n\nEl error más común (y el tuyo, según tus datos): correr las salidas fáciles demasiado rápido."}
+        />
+      </div>
 
       <div className="mb-3">
         <ZoneBar

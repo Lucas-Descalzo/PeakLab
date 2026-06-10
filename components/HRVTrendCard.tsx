@@ -1,4 +1,5 @@
 "use client"
+import InfoHint from "@/components/ui/InfoHint"
 
 interface HRVTrendData {
   current: number
@@ -7,6 +8,7 @@ interface HRVTrendData {
   trend_label: string
   baseline_lower: number
   baseline_upper: number
+  series?: { date: string; hrv: number }[]
 }
 
 interface Props {
@@ -25,29 +27,18 @@ const TREND_ARROWS: Record<string, string> = {
   declining: "↓",
 }
 
-// Build a simple sparkline from fake weekly-ish data derived from current + average
-function buildSparkline(current: number, average: number): number[] {
-  // Generate 8 plausible data points that end at current, centered around average
-  const spread = Math.abs(current - average) * 1.5 + 5
-  return [
-    average - spread * 0.3,
-    average + spread * 0.2,
-    average - spread * 0.1,
-    average + spread * 0.4,
-    average - spread * 0.2,
-    average + spread * 0.1,
-    average + spread * 0.15,
-    current,
-  ]
-}
+// El sparkline usa SOLO datos reales del historial. Si no hay suficientes
+// puntos, no se dibuja línea (antes se inventaba una curva decorativa que
+// contradecía el "promedio 7d: 0ms").
 
 export default function HRVTrendCard({ hrvTrend }: Props) {
   const trendColor = TREND_COLORS[hrvTrend.trend] ?? "text-yellow-400"
   const arrow = TREND_ARROWS[hrvTrend.trend] ?? "→"
 
-  const points = buildSparkline(hrvTrend.current, hrvTrend.average7d)
-  const minVal = Math.min(...points)
-  const maxVal = Math.max(...points)
+  const points = (hrvTrend.series ?? []).slice(-28).map((p) => p.hrv)
+  const hasSeries = points.length >= 2
+  const minVal = hasSeries ? Math.min(...points, hrvTrend.baseline_lower || Infinity) : 0
+  const maxVal = hasSeries ? Math.max(...points, hrvTrend.baseline_upper || -Infinity) : 1
   const range = maxVal - minVal || 1
 
   const svgW = 300
@@ -63,9 +54,15 @@ export default function HRVTrendCard({ hrvTrend }: Props) {
 
   return (
     <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
-      <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">
-        HRV — TENDENCIA 4 SEMANAS
-      </p>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
+          VFC — TENDENCIA 4 SEMANAS
+        </p>
+        <InfoHint
+          title="¿Qué es la VFC?"
+          text={"Variabilidad de la Frecuencia Cardíaca (HRV en inglés): variación en milisegundos entre latido y latido, medida mientras dormís.\n\nVFC alta y estable = tu sistema nervioso se recupera bien. Una caída sostenida bajo tu baseline indica fatiga, estrés o enfermedad incubando.\n\nLa banda gris del gráfico es tu rango normal personal."}
+        />
+      </div>
 
       {/* Current value + trend */}
       <div className="flex items-end justify-between mb-4">
@@ -84,7 +81,12 @@ export default function HRVTrendCard({ hrvTrend }: Props) {
 
       {/* Sparkline */}
       <div className="mb-4">
-        <svg
+        {!hasSeries && (
+          <p className="text-slate-600 text-xs italic py-3">
+            Registrando historial de VFC — el gráfico aparece con 2+ días de datos.
+          </p>
+        )}
+        {hasSeries && <svg
           viewBox={`0 0 ${svgW} ${svgH}`}
           width="100%"
           height={svgH}
@@ -128,7 +130,7 @@ export default function HRVTrendCard({ hrvTrend }: Props) {
             const lastY = svgH - ((hrvTrend.current - minVal) / range) * svgH
             return <circle cx={lastX} cy={lastY} r="3" fill="#4ADE80" />
           })()}
-        </svg>
+        </svg>}
       </div>
 
       {/* Footer stats */}

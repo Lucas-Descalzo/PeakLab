@@ -117,6 +117,53 @@ export async function getWellnessHistory(days: number): Promise<WellnessEntry[]>
   }
 }
 
+export interface LatestMetrics {
+  hrv: number | null
+  hrv_date: string | null
+  hrv_baseline_lower: number | null
+  hrv_baseline_upper: number | null
+  sleep_total_s: number | null
+  sleep_score: number | null
+  sleep_deep_s: number | null
+  sleep_rem_s: number | null
+  sleep_date: string | null
+  resting_hr: number | null
+  stress_avg: number | null
+}
+
+/**
+ * Último valor disponible POR CAMPO en los últimos 7 días.
+ * Evita el problema de "hoy existe pero está incompleto": a la 1am la entrada
+ * de hoy puede no tener sueño todavía, pero la de ayer sí — se usa esa.
+ */
+export async function getLatestMetrics(): Promise<LatestMetrics> {
+  const history = await getWellnessHistory(7)
+  const out: LatestMetrics = {
+    hrv: null, hrv_date: null, hrv_baseline_lower: null, hrv_baseline_upper: null,
+    sleep_total_s: null, sleep_score: null, sleep_deep_s: null, sleep_rem_s: null,
+    sleep_date: null, resting_hr: null, stress_avg: null,
+  }
+  // history viene ascendente: recorrer de más nuevo a más viejo
+  for (const w of [...history].reverse()) {
+    if (out.hrv === null && w.hrv) {
+      out.hrv = w.hrv
+      out.hrv_date = w.date
+      out.hrv_baseline_lower = w.hrv_baseline_lower ?? null
+      out.hrv_baseline_upper = w.hrv_baseline_upper ?? null
+    }
+    if (out.sleep_total_s === null && w.sleep_total_s) {
+      out.sleep_total_s = w.sleep_total_s
+      out.sleep_score = w.sleep_score ?? null
+      out.sleep_deep_s = w.sleep_deep_s ?? null
+      out.sleep_rem_s = w.sleep_rem_s ?? null
+      out.sleep_date = w.date
+    }
+    if (out.resting_hr === null && w.resting_hr) out.resting_hr = w.resting_hr
+    if (out.stress_avg === null && w.stress_avg !== undefined) out.stress_avg = w.stress_avg
+  }
+  return out
+}
+
 // ── Activities ────────────────────────────────────────────────────────────────
 
 export async function upsertActivity(activity: ActivityEntry): Promise<void> {

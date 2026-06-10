@@ -2,6 +2,10 @@ export const dynamic = "force-dynamic"
 
 import { getRecentActivities, getLatestWellness } from "@/lib/db"
 import { computeLoadAnalysis } from "@/lib/load-analysis"
+import { computePerformance } from "@/lib/performance-engine"
+import { getWellnessHistory, getGymSessions } from "@/lib/db"
+import { formatHm } from "@/lib/format"
+import type { ProgressLiveData } from "@/components/screens/ProgressScreen"
 import ProgressScreen from "@/components/screens/ProgressScreen"
 import TrainingLoadChart from "@/components/TrainingLoadChart"
 import ACWRCard from "@/components/ACWRCard"
@@ -50,11 +54,45 @@ const PERSONAL_RECORDS = [
 export default async function MetricasPage() {
   // FIX: antes hacía self-fetch a NEXT_PUBLIC_APP_URL (variable que no existe
   // en Vercel) => siempre caía en DEMO_LOAD. Ahora computa directo en el server.
-  const [liveActivities, wellness, loadAnalysisRaw] = await Promise.all([
+  const [liveActivities, wellness, loadAnalysisRaw, perf, wellnessHist, gymSessions] = await Promise.all([
     getRecentActivities(10),
     getLatestWellness(),
     computeLoadAnalysis().catch(() => null),
+    computePerformance().catch(() => null),
+    getWellnessHistory(7).catch(() => []),
+    getGymSessions(60).catch(() => []),
   ])
+
+  // ── Datos vivos para la pestaña Progreso ──
+  const hrvVals = wellnessHist.map(w => w.hrv).filter((h): h is number => !!h)
+  const sleepVals = wellnessHist.map(w => w.sleep_total_s).filter((s): s is number => !!s)
+
+  // 1RM Epley (peso × (1 + reps/30)) por ejercicio, mejor serie registrada
+  const liftMap = new Map<string, number>()
+  for (const s of gymSessions) {
+    for (const ex of s.exercises ?? []) {
+      for (const set of ex.sets ?? []) {
+        if (!set.kg || !set.reps) continue
+        const est = set.kg * (1 + set.reps / 30)
+        if (est > (liftMap.get(ex.name) ?? 0)) liftMap.set(ex.name, est)
+      }
+    }
+  }
+  const maxLift = Math.max(...Array.from(liftMap.values()), 1)
+  const gymLifts = Array.from(liftMap.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, est]) => ({ name, est: `${Math.round(est)}kg`, pct: Math.round((est / maxLift) * 100) }))
+
+  const engineSeries = perf?.has_live_data ? perf.series : []
+  const liveProgress: ProgressLiveData = {
+    hrvAvg7d: hrvVals.length ? Math.round(hrvVals.reduce((a, b) => a + b, 0) / hrvVals.length) : null,
+    sleepAvgHm: sleepVals.length ? formatHm(sleepVals.reduce((a, b) => a + b, 0) / sleepVals.length) : null,
+    ctl: perf?.has_live_data && perf.today ? perf.today.ctl : null,
+    tsb: perf?.has_live_data && perf.today ? perf.today.tsb : null,
+    loadSeries: engineSeries.slice(-14).map(d => ({ d: d.date.slice(5), atl: d.atl, ctl: d.ctl })),
+    gymLifts,
+  }
 
   const loadAnalysis = loadAnalysisRaw && loadAnalysisRaw.has_live_data ? loadAnalysisRaw : DEMO_LOAD
   const activities = liveActivities.length > 0 ? liveActivities : STATIC_ACTIVITIES
@@ -63,7 +101,7 @@ export default async function MetricasPage() {
   return (
     <div className="space-y-6">
       {/* Overview tabs (summary charts + predictions) */}
-      <ProgressScreen />
+      <ProgressScreen live={liveProgress} />
 
       {/* Advanced Metrics */}
       <div className="space-y-3">

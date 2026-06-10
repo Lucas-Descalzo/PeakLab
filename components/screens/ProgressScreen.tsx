@@ -22,6 +22,23 @@ function ChartTooltip({ active, payload, label }: any) {
   )
 }
 
+export interface ProgressLiveData {
+  hrvAvg7d: number | null
+  sleepAvgHm: string | null
+  ctl: number | null
+  tsb: number | null
+  loadSeries: { d: string; atl: number; ctl: number }[]
+  gymLifts: { name: string; est: string; pct: number }[]
+}
+
+function DemoBadge() {
+  return (
+    <span className="text-[10px] font-semibold text-slate-600 border border-slate-700 rounded-full px-2 py-0.5 uppercase tracking-wide">
+      ejemplo
+    </span>
+  )
+}
+
 const READINESS_DATA = [
   { d: "L-5", v: 71 }, { d: "L-4", v: 68 }, { d: "L-3", v: 82 },
   { d: "L-2", v: 59 }, { d: "L-1", v: 74 }, { d: "Hoy", v: 82 },
@@ -45,13 +62,10 @@ const RACE_PREDS = [
   { dist: "Media",  pred: "1:45:05", pace: "4:59/km", target: true },
   { dist: "Maratón", pred: "3:53:55", pace: "5:33/km", target: true },
 ]
-const STRENGTH_LIFTS = [
-  { name: "Press banca",  est: "132kg", delta: "+4kg", pct: 82 },
-  { name: "Press militar", est: "76kg",  delta: "+3kg", pct: 64 },
-  { name: "Fondos c/peso", est: "BW+28", delta: "+5kg", pct: 71 },
-]
+// Los 1RM se calculan SOLO desde sesiones de gym registradas (fórmula Epley).
+// Nada de números inventados.
 
-export default function ProgressScreen() {
+export default function ProgressScreen({ live }: { live?: ProgressLiveData }) {
   const [tab, setTab] = useState<"recovery" | "run" | "strength">("recovery")
 
   return (
@@ -78,22 +92,22 @@ export default function ProgressScreen() {
         </div>
       </div>
 
-      {tab === "recovery" && <RecoveryTab />}
+      {tab === "recovery" && <RecoveryTab live={live} />}
       {tab === "run" && <RunTab />}
-      {tab === "strength" && <StrengthTab />}
+      {tab === "strength" && <StrengthTab live={live} />}
     </div>
   )
 }
 
 // ─── Recovery tab ──────────────────────────────────────────────────────────────
-function RecoveryTab() {
+function RecoveryTab({ live }: { live?: ProgressLiveData }) {
   return (
     <div className="space-y-4">
       {/* Readiness chart */}
       <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
         <div className="flex justify-between items-start mb-3">
           <div>
-            <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-1">Readiness · 7 días</p>
+            <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-1">Readiness  · 7 días</p>
             <p className="text-slate-100 text-xl font-black">82 <span className="text-slate-500 text-sm font-normal">hoy</span></p>
           </div>
           <Pill label="↑ Tendencia" />
@@ -118,10 +132,18 @@ function RecoveryTab() {
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3">
         {[
-          { icon: <Heart size={16} className="text-slate-500" />, label: "HRV promedio", value: "74ms", delta: "+6ms" },
-          { icon: <Flame size={16} className="text-slate-500" />, label: "Sueño promedio", value: "7.8h", delta: "+0.3h" },
-          { icon: <Activity size={16} className="text-slate-500" />, label: "CTL (Fitness)", value: "23", delta: "+4" },
-          { icon: <TrendingUp size={16} className="text-slate-500" />, label: "TSB (Forma)", value: "+5", delta: "Fresco" },
+          { icon: <Heart size={16} className="text-slate-500" />, label: "VFC promedio 7d",
+            value: live?.hrvAvg7d ? `${live.hrvAvg7d}ms` : "—",
+            delta: live?.hrvAvg7d ? "real" : "sin datos" },
+          { icon: <Flame size={16} className="text-slate-500" />, label: "Sueño promedio 7d",
+            value: live?.sleepAvgHm ?? "—",
+            delta: live?.sleepAvgHm ? "real" : "sin datos" },
+          { icon: <Activity size={16} className="text-slate-500" />, label: "CTL (Fitness)",
+            value: live?.ctl != null ? `${live.ctl}` : "—",
+            delta: live?.ctl != null ? "real" : "sin datos" },
+          { icon: <TrendingUp size={16} className="text-slate-500" />, label: "TSB (Forma)",
+            value: live?.tsb != null ? `${live.tsb > 0 ? "+" : ""}${live.tsb}` : "—",
+            delta: live?.tsb != null ? (live.tsb > 5 ? "Fresco" : live.tsb > -10 ? "Neutro" : "Cargado") : "sin datos" },
         ].map(m => (
           <div key={m.label} className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
             {m.icon}
@@ -134,9 +156,12 @@ function RecoveryTab() {
 
       {/* ATL vs CTL */}
       <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
-        <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-3">Carga ATL vs CTL</p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest">Carga ATL vs CTL</p>
+          {!live?.loadSeries?.length && <DemoBadge />}
+        </div>
         <ResponsiveContainer width="100%" height={100}>
-          <LineChart data={LOAD_DATA} margin={{ top: 5, right: 0, left: -30, bottom: 0 }}>
+          <LineChart data={live?.loadSeries?.length ? live.loadSeries : LOAD_DATA} margin={{ top: 5, right: 0, left: -30, bottom: 0 }}>
             <XAxis dataKey="d" tick={{ fill: colors.t3, fontSize: 10 }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: colors.t3, fontSize: 10 }} axisLine={false} tickLine={false} />
             <Tooltip content={<ChartTooltip />} />
@@ -157,7 +182,7 @@ function RunTab() {
       <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
         <div className="flex justify-between items-start mb-3">
           <div>
-            <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-1">VO2max</p>
+            <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-1">VO2max <DemoBadge /></p>
             <p className="text-slate-100 text-xl font-black">
               54.2 <span className="text-lime-400 text-sm font-semibold">↑ +3.0</span>
             </p>
@@ -183,7 +208,7 @@ function RunTab() {
 
       {/* Race predictions */}
       <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
-        <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-3">Predicciones</p>
+        <div className="flex items-center gap-2 mb-3"><p className="text-slate-500 text-xs font-semibold uppercase tracking-widest">Predicciones</p><DemoBadge /></div>
         <div className="space-y-2">
           {RACE_PREDS.map(r => (
             <div
@@ -211,7 +236,8 @@ function RunTab() {
 }
 
 // ─── Strength tab ──────────────────────────────────────────────────────────────
-function StrengthTab() {
+function StrengthTab({ live }: { live?: ProgressLiveData }) {
+  const lifts = live?.gymLifts ?? []
   const maxVol = Math.max(...STRENGTH_DATA.map(d => d.v))
   return (
     <div className="space-y-4">
@@ -219,7 +245,7 @@ function StrengthTab() {
       <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
         <div className="flex justify-between items-start mb-3">
           <div>
-            <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-1">Volumen semanal</p>
+            <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-1">Volumen semanal <DemoBadge /></p>
             <p className="text-slate-100 text-xl font-black">
               4.1T <span className="text-blue-400 text-sm font-semibold">↑ +28%</span>
             </p>
@@ -245,15 +271,17 @@ function StrengthTab() {
       {/* 1RM estimates */}
       <div className="bg-[#0f1419] border border-[#1e2a35] rounded-2xl p-4">
         <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-4">1RM estimados</p>
+        {lifts.length === 0 && (
+          <p className="text-slate-600 text-xs italic">
+            Sin sesiones de gym registradas todavía. Registrá tus entrenamientos en la pestaña Gym y acá van a aparecer tus 1RM estimados reales (fórmula Epley).
+          </p>
+        )}
         <div className="space-y-4">
-          {STRENGTH_LIFTS.map(ex => (
+          {lifts.map(ex => (
             <div key={ex.name}>
               <div className="flex justify-between items-center mb-1.5">
                 <p className="text-slate-300 text-sm">{ex.name}</p>
-                <div className="flex items-center gap-2">
-                  <Pill label={`↑ ${ex.delta}`} variant="blue" />
-                  <p className="text-slate-100 font-bold text-sm">{ex.est}</p>
-                </div>
+                <p className="text-slate-100 font-bold text-sm">{ex.est}</p>
               </div>
               <div className="h-1 bg-[#1e2a35] rounded-full overflow-hidden">
                 <div

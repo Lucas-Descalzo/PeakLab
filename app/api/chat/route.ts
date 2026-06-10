@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { getTodayWorkout, getCurrentWeek, buildPlan } from "@/lib/training-plan";
-import { getLatestWellness, getRecentActivities } from "@/lib/db";
+import { getLatestMetrics, getRecentActivities } from "@/lib/db";
+import { argentinaToday } from "@/lib/dates";
+import { formatHm, spanishWeekday } from "@/lib/format";
 
 // Extend Vercel serverless timeout from 10s default to 30s
 export const maxDuration = 30;
@@ -17,24 +19,27 @@ const GEMINI_MODELS = [
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function buildContext(): Promise<string> {
-  const today = new Date().toISOString().split("T")[0];
+  // Día en horario de ARGENTINA (no UTC: a la noche el día UTC ya cambió)
+  const today = argentinaToday();
   const todayWorkout = getTodayWorkout();
   const currentWeek = getCurrentWeek();
   const weekWorkouts = buildPlan().filter((w) => w.week === currentWeek);
 
-  // Load live data from Upstash
-  const [wellness, activities] = await Promise.all([
-    getLatestWellness().catch(() => null),
+  // Último valor disponible POR CAMPO: a la 1am la entrada de "hoy" todavía
+  // no tiene sueño (Garmin lo procesa cuando te despertás y el sync corre 9am),
+  // pero el dato de anoche/ayer SÍ existe — se usa ese, con su fecha.
+  const [metrics, activities] = await Promise.all([
+    getLatestMetrics().catch(() => null),
     getRecentActivities(5).catch(() => []),
   ]);
 
-  const hrvInfo = wellness?.hrv
-    ? `HRV: ${wellness.hrv}ms (base ${wellness.hrv_baseline_lower}-${wellness.hrv_baseline_upper}ms)`
-    : "HRV: sin datos";
+  const hrvInfo = metrics?.hrv
+    ? `VFC: ${metrics.hrv}ms medida la noche del ${spanishWeekday(metrics.hrv_date!)}${metrics.hrv_baseline_lower ? ` (baseline ${metrics.hrv_baseline_lower}-${metrics.hrv_baseline_upper}ms)` : ""}`
+    : "VFC: sin datos sincronizados aún (el sync corre 9am)";
 
-  const sleepInfo = wellness?.sleep_total_s
-    ? `Sueño: ${(wellness.sleep_total_s / 3600).toFixed(1)}h${wellness.sleep_score ? ` score ${wellness.sleep_score}` : ""}`
-    : "Sueño: sin datos";
+  const sleepInfo = metrics?.sleep_total_s
+    ? `Sueño: ${formatHm(metrics.sleep_total_s)} la noche del ${spanishWeekday(metrics.sleep_date!)}${metrics.sleep_score ? `, score ${metrics.sleep_score}` : ""}`
+    : "Sueño: sin datos sincronizados aún (el sync corre 9am)";
 
   const activityLines = activities.length > 0
     ? activities.slice(0, 3).map((a) => {
@@ -43,21 +48,24 @@ async function buildContext(): Promise<string> {
         const pace = a.avg_pace_s_per_km
           ? `${Math.floor(a.avg_pace_s_per_km / 60)}:${String(a.avg_pace_s_per_km % 60).padStart(2, "0")}/km`
           : "-";
-        return `  ${a.date}: ${a.name} ${km}km ${min}min ${pace} HR ${a.avg_hr}`;
+        return `  ${spanishWeekday(a.date)} (${a.date}): ${a.name} ${km}km ${min}min ${pace} FC ${a.avg_hr}`;
       }).join("\n")
-    : `  2026-06-02: VO2max 5.6km 30min 5:26/km HR163\n  2026-05-31: Base 10.3km 58min 5:37/km HR164\n  2026-05-28: Tempo 7.0km 35min 5:03/km HR167`;
+    : "  (sin corridas sincronizadas)";
 
   const planContext = weekWorkouts.map((w) =>
-    `  ${["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"][new Date(w.date + "T00:00:00").getDay()]}: ${w.title} ${w.distanceKm}km ${w.paceTarget || ""}`
+    `  ${spanishWeekday(w.date)}: ${w.title} ${w.distanceKm}km ${w.paceTarget || ""}`
   ).join("\n");
 
-  return `HOY ${today}: ${hrvInfo} | ${sleepInfo} | VO2max 54 FC máx 201
+  return `HOY ES ${spanishWeekday(today)} (${today}, hora Argentina): ${hrvInfo} | ${sleepInfo} | VO2max 54 FC máx 201
+REGLAS DE DATOS (importantes):
+- Los días de semana ya vienen calculados arriba — usalos TAL CUAL, nunca calcules el día de semana de una fecha vos.
+- Si un dato dice "sin datos", decí que todavía no está sincronizado. NUNCA inventes valores de VFC, sueño, ritmos ni cargas.
 SEMANA ${currentWeek}/15 — ${weekWorkouts[0]?.phase || ""}:
 ${planContext}
 HOY: ${todayWorkout ? `${todayWorkout.title} — ${todayWorkout.details}` : "Descanso"}
-CORRIDAS RECIENTES:
+CORRIDAS RECIENTES (más nueva primero):
 ${activityLines}
-OJO: Lucas suele correr Z2 a HR 154-164 en vez de <140. Recordárselo si aplica.`;
+OJO: Lucas suele correr Z2 a FC 154-164 en vez de <140. Recordárselo si aplica.`;
 }
 
 // ~120 tokens — concise profile + style guide

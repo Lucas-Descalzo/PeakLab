@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
-import { getLatestWellness, getRecentActivities } from "@/lib/db"
+import { getLatestWellness, getRecentActivities, getLatestMetrics } from "@/lib/db"
 import { getTodayWorkout } from "@/lib/training-plan"
 import { calcTrainingLoad, calcReadiness, calcACWR, calcTrainingStatus, calcLoadFocus, calcHRVTrend } from "@/lib/training-readiness"
 import { computePerformance } from "@/lib/performance-engine"
 import { argentinaToday, argentinaMidnightTimestamp } from "@/lib/dates"
+import { formatHm, spanishWeekday } from "@/lib/format"
 
 
 
@@ -47,6 +48,7 @@ export async function GET() {
 
   // Build context
   const wellness = await getLatestWellness().catch(() => null)
+  const metrics = await getLatestMetrics().catch(() => null)
   const activities = await getRecentActivities(42).catch(() => [])
   const todayWorkout = getTodayWorkout()
 
@@ -78,11 +80,11 @@ export async function GET() {
 
   const wellnessData = {
     date: wellness?.date ?? today,
-    hrv: wellness?.hrv ?? 77,
-    hrv_baseline_lower: wellness?.hrv_baseline_lower ?? 55,
-    hrv_baseline_upper: wellness?.hrv_baseline_upper ?? 99,
-    sleep_total_s: wellness?.sleep_total_s ?? Math.round(8.2 * 3600),
-    sleep_score: wellness?.sleep_score ?? 89,
+    hrv: metrics?.hrv ?? 0,
+    hrv_baseline_lower: metrics?.hrv_baseline_lower ?? 0,
+    hrv_baseline_upper: metrics?.hrv_baseline_upper ?? 0,
+    sleep_total_s: metrics?.sleep_total_s ?? 0,
+    sleep_score: metrics?.sleep_score ?? 0,
   }
   // Readiness sintético (HRV 30% · carga 25% · sueño 20% · estrés 15% · deuda 10%).
   // Si todavía no hay historial en Redis cae al cálculo legacy.
@@ -106,8 +108,11 @@ export async function GET() {
     score: readiness.score,
     status: readiness.label,
     color: readiness.color,
-    hrv: wellnessData.hrv,
-    sleep_h: parseFloat((wellnessData.sleep_total_s / 3600).toFixed(1)),
+    hrv: metrics?.hrv ?? null,
+    hrv_date: metrics?.hrv_date ?? null,
+    sleep_h: metrics?.sleep_total_s ? parseFloat((metrics.sleep_total_s / 3600).toFixed(1)) : null,
+    sleep_hm: metrics?.sleep_total_s ? formatHm(metrics.sleep_total_s) : null,
+    sleep_date: metrics?.sleep_date ?? null,
     tsb: perf?.today ? perf.today.tsb : parseFloat(load.tsb.toFixed(1)),
     ...(perf && perf.has_live_data && {
       readiness_components: perf.readiness.components,
@@ -122,10 +127,11 @@ export async function GET() {
   const apiKey = process.env.GEMINI_API_KEY
   if (apiKey && !apiKey.includes("your_") && apiKey.length > 10) {
     try {
-      const hrv = wellnessData.hrv
-      const sleep = (wellnessData.sleep_total_s / 3600).toFixed(1)
+      const hrvTxt = metrics?.hrv ? `${metrics.hrv}ms (${spanishWeekday(metrics.hrv_date!)})` : "sin datos"
+      const sleepTxt = metrics?.sleep_total_s ? `${formatHm(metrics.sleep_total_s)} (${spanishWeekday(metrics.sleep_date!)})` : "sin datos"
       const prompt = `Sos el coach de PeakLab para Lucas (21 años, corredor de Buenos Aires).
-DATOS: HRV ${hrv}ms, Sueño ${sleep}h, Readiness ${readiness.score}/100, TSB ${load.tsb.toFixed(1)}.
+HOY ES ${spanishWeekday(today)}/2026. Usá los días de semana tal cual te los doy, no los calcules vos.
+DATOS: VFC ${hrvTxt}, Sueño ${sleepTxt}, Readiness ${readiness.score}/100, TSB ${load.tsb.toFixed(1)}.
 TRAINING STATUS: ${training_status.label} (${training_status.description})
 ACWR: ${acwr.acwr.toFixed(2)} — ${acwr.label}
 LOAD FOCUS: ${load_focus.deficit_label} — ${load_focus.recommendation}

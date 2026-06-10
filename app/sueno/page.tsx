@@ -14,10 +14,12 @@ const FALLBACK = {
   restingHr: 52 as number | null,
 };
 
+// Mismo formato que Garmin Connect: "7h 43min"
 function formatHours(h: number): string {
-  const hrs = Math.floor(h);
-  const mins = Math.round((h - hrs) * 60);
-  return `${hrs}h ${mins}m`;
+  const totalMin = Math.round(h * 60);
+  const hrs = Math.floor(totalMin / 60);
+  const mins = totalMin % 60;
+  return `${hrs}h ${mins}min`;
 }
 
 function scoreBadge(score: number | null): { label: string; cls: string } {
@@ -55,7 +57,7 @@ export default async function SuenoPage() {
       status: badge.label, statusColor: data.score >= 60 ? "text-lime-400" : "text-yellow-400",
     },
     data.hrv !== null && {
-      label: "HRV nocturno", value: `${data.hrv} ms`,
+      label: "VFC nocturna", value: `${data.hrv} ms`,
       status: "Garmin", statusColor: "text-slate-500",
     },
     data.restingHr !== null && {

@@ -13,8 +13,11 @@ interface DailyBrief {
   focus: string
   action: string
   color: string
-  hrv: number
-  sleep_h: number
+  hrv: number | null
+  hrv_date?: string | null
+  sleep_h: number | null
+  sleep_hm?: string | null
+  sleep_date?: string | null
   tsb: number
 }
 
@@ -209,15 +212,19 @@ export default function HomeScreen({ todayWorkout, currentWeek }: HomeScreenProp
         {[
           {
             icon: <Heart size={15} className="text-slate-500" />,
-            label: "HRV",
-            value: brief ? `${brief.hrv}ms` : "—",
-            delta: brief ? (brief.hrv >= 70 ? "Óptimo" : brief.hrv >= 55 ? "Normal" : "Bajo") : "...",
+            label: "VFC",
+            value: brief?.hrv ? `${brief.hrv}ms` : "—",
+            delta: brief?.hrv
+              ? (brief.hrv >= 70 ? "Óptima" : brief.hrv >= 55 ? "Normal" : "Baja")
+              : brief ? "Sin datos" : "...",
           },
           {
             icon: <Moon size={15} className="text-slate-500" />,
             label: "Sueño",
-            value: brief ? `${brief.sleep_h}h` : "—",
-            delta: brief ? (brief.sleep_h >= 7.5 ? "Bueno" : brief.sleep_h >= 6 ? "Regular" : "Poco") : "...",
+            value: brief?.sleep_hm ?? (brief?.sleep_h ? `${brief.sleep_h}h` : "—"),
+            delta: brief?.sleep_h
+              ? (brief.sleep_h >= 7.5 ? "Bueno" : brief.sleep_h >= 6 ? "Regular" : "Poco")
+              : brief ? "Sin datos" : "...",
           },
           {
             icon: <Activity size={15} className="text-slate-500" />,
